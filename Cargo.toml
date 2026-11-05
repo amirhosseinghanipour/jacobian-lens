@@ -22,5 +22,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 jlens-research = { path = "crates/research-core", version = "0.1.0" }
 
-[dev-dependencies]
 tempfile = "3"
+

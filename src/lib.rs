@@ -2,8 +2,13 @@
 //! Layer indices refer to residual block **outputs**, before the final norm.
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod checkpoint;
 mod decode;
+pub use checkpoint::*;
+pub mod evaluation;
 mod fitting;
+mod intervention;
+pub use intervention::*;
 pub mod qwen2;
 pub use fitting::*;
 pub use jlens_research as research;

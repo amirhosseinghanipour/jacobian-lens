@@ -30,9 +30,11 @@ impl Qwen2Config {
             || self.num_attention_heads == 0
             || self.num_key_value_heads == 0
             || self.max_position_embeddings == 0
-            || self.hidden_size % self.num_attention_heads != 0
-            || self.num_attention_heads % self.num_key_value_heads != 0
-            || (self.hidden_size / self.num_attention_heads) % 2 != 0
+            || !self.hidden_size.is_multiple_of(self.num_attention_heads)
+            || !self
+                .num_attention_heads
+                .is_multiple_of(self.num_key_value_heads)
+            || !(self.hidden_size / self.num_attention_heads).is_multiple_of(2)
             || !self.rope_theta.is_finite()
             || self.rope_theta <= 0.
             || !self.rms_norm_eps.is_finite()

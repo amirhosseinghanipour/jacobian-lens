@@ -179,3 +179,43 @@ fn normalization_occurs_after_transport_and_before_head() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn device_coordinate_swap_matches_nonorthogonal_reference() -> Result<()> {
+    let basis = Tensor::new(&[[1f32, 0., 0.], [1., 1., 0.]], &Device::Cpu)?;
+    let frame = LensFrame::new(basis, 1e-6)?;
+    let h = Tensor::new(&[[[5f32, 2., 7.]]], &Device::Cpu)?;
+    let swapped = frame.permute(&h, &[1, 0], 1.)?;
+    let values = swapped.flatten_all()?.to_vec1::<f32>()?;
+    for (actual, expected) in values.iter().zip([5., 3., 7.]) {
+        assert!((actual - expected).abs() < 1e-5);
+    }
+    let twice = frame
+        .permute(&swapped, &[1, 0], 1.)?
+        .flatten_all()?
+        .to_vec1::<f32>()?;
+    for (actual, expected) in twice.iter().zip([5., 2., 7.]) {
+        assert!((actual - expected).abs() < 1e-5);
+    }
+    let ablated = frame.ablate(&h, 1.)?.flatten_all()?.to_vec1::<f32>()?;
+    for (actual, expected) in ablated.iter().zip([0., 0., 7.]) {
+        assert!((actual - expected).abs() < 1e-5);
+    }
+    Ok(())
+}
+#[test]
+fn merged_shards_and_serialization_preserve_readouts() -> Result<()> {
+    let first = registry()?;
+    let second =
+        JacobianLensRegistry::new(BTreeMap::from([(0, first.jacobian(0)?.affine(2., 0.)?)]))?;
+    let (merged, n) = JacobianLensRegistry::merge(&[(&first, 2), (&second, 6)])?;
+    assert_eq!(n, 8);
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("merged.safetensors");
+    merged.save(&path)?;
+    let loaded = JacobianLensRegistry::load(path, &Device::Cpu, DType::F32)?;
+    let h = Tensor::new(&[5f32, 6.], &Device::Cpu)?;
+    let output = loaded.transport(0, &h)?.to_vec1::<f32>()?;
+    assert_eq!(output, vec![17. * 1.75, 39. * 1.75]);
+    Ok(())
+}

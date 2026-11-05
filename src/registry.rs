@@ -153,3 +153,90 @@ fn load_view(view: &TensorView<'_>, device: &Device) -> Result<Tensor> {
         device,
     )?)
 }
+
+impl JacobianLensRegistry {
+    /// Export J[out,in] in the canonical Python convention.
+    pub fn jacobian(&self, layer: usize) -> Result<Tensor> {
+        Ok(self
+            .transposes
+            .get(&layer)
+            .ok_or(LensError::MissingLayer(layer))?
+            .t()?
+            .contiguous()?)
+    }
+    /// Write canonical multi-layer safetensors atomically.
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let temp = tempfile::NamedTempFile::new_in(parent)?;
+        let tensors = self
+            .layers()
+            .map(|l| Ok((format!("jacobians.{l}"), self.jacobian(l)?)))
+            .collect::<Result<std::collections::HashMap<_, _>>>()?;
+        candle_core::safetensors::save(&tensors, temp.path())?;
+        temp.as_file().sync_all()?;
+        temp.persist(path).map_err(|e| LensError::Io(e.error))?;
+        #[cfg(unix)]
+        File::open(parent)?.sync_all()?;
+        Ok(())
+    }
+    /// Prompt-weighted merge of independently fitted shards.
+    pub fn merge(shards: &[(&Self, usize)]) -> Result<(Self, usize)> {
+        let (first, _) = shards
+            .first()
+            .ok_or_else(|| LensError::Invalid("merge needs shards".into()))?;
+        let mut total = 0usize;
+        let mut means = BTreeMap::new();
+        for &(registry, count) in shards {
+            if count == 0 || registry.width != first.width || !registry.layers().eq(first.layers())
+            {
+                return Err(LensError::Invalid(
+                    "incompatible or empty fitting shards".into(),
+                ));
+            }
+            total = total
+                .checked_add(count)
+                .ok_or_else(|| LensError::Invalid("prompt count overflow".into()))?;
+            for layer in registry.layers() {
+                let weighted = registry
+                    .jacobian(layer)?
+                    .to_dtype(DType::F32)?
+                    .affine(count as f64, 0.)?;
+                let next = match means.remove(&layer) {
+                    None => weighted,
+                    Some(previous) => (previous + weighted)?,
+                };
+                means.insert(layer, next);
+            }
+        }
+        let means = means
+            .into_iter()
+            .map(|(l, j)| Ok((l, j.affine(1. / total as f64, 0.)?)))
+            .collect::<Result<_>>()?;
+        Ok((Self::new(means)?, total))
+    }
+    /// Selected rows of W_U J, without constructing a full vocabulary dictionary.
+    pub fn token_directions(
+        &self,
+        layer: usize,
+        head: &Tensor,
+        token_ids: &[u32],
+    ) -> Result<Tensor> {
+        let (vocab, d) = head.dims2()?;
+        if d != self.width
+            || token_ids.is_empty()
+            || token_ids.iter().any(|&id| id as usize >= vocab)
+        {
+            return Err(LensError::Invalid("invalid head/token directions".into()));
+        }
+        let ids = Tensor::new(token_ids, head.device())?;
+        let j = self.jacobian(layer)?;
+        Ok(head
+            .index_select(&ids, 0)?
+            .to_dtype(j.dtype())?
+            .matmul(&j)?)
+    }
+}

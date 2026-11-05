@@ -95,3 +95,101 @@ fn qwen_residual_logits_and_jacobian_rows_match_pytorch() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+#[ignore = "fits a complete Qwen lens and performs a held-out causal concept swap"]
+fn qwen_full_fit_serialization_and_concept_swap() -> Result<()> {
+    use jacobian_lens::{
+        FittingConfig, JacobianLensRegistry, LensFrame,
+        evaluation::{EvaluationDataset, ReadoutPosition, encode_readout},
+        fit,
+    };
+    use tokenizers::Tokenizer;
+    let directory = std::env::var("JLENS_QWEN_DIR").expect("set JLENS_QWEN_DIR");
+    let oracle = std::env::var("JLENS_QWEN_ORACLE").expect("set JLENS_QWEN_ORACLE");
+    let device = Device::Cpu;
+    let fixture = candle_core::safetensors::load(oracle, &device)?;
+    let model = Qwen2::load(&directory, &device, DType::F32)?;
+    let ids = fixture["input_ids"].to_dtype(DType::U32)?;
+    let source = model.layer_count() - 2;
+    let (registry, n) = fit(
+        &model,
+        &[ids],
+        &FittingConfig {
+            source_layers: vec![source],
+            target_layer: source + 1,
+            skip_first: 16,
+            max_seq_len: 32,
+            dim_batch: 8,
+        },
+    )?;
+    assert_eq!(n, 1);
+    let dims = fixture["dimensions"].to_dtype(DType::U32)?;
+    compare(
+        &registry.jacobian(source)?.index_select(&dims, 0)?,
+        &fixture["jacobian_rows"],
+        1e-3,
+        2e-3,
+    )?;
+    let tmp = tempfile::tempdir()?;
+    let path = tmp.path().join("lens.safetensors");
+    registry.save(&path)?;
+    let registry = JacobianLensRegistry::load(&path, &device, DType::F32)?;
+    let tok =
+        Tokenizer::from_file(std::path::Path::new(&directory).join("tokenizer.json")).unwrap();
+    let dataset: EvaluationDataset =
+        serde_json::from_str(include_str!("../data/evaluations/lens-eval-multihop.json")).unwrap();
+    let item = dataset
+        .items
+        .iter()
+        .find(|i| i.name == "firstletter-paris-country")
+        .unwrap();
+    let heldout = encode_readout(&tok, item, ReadoutPosition::BeforeTarget)?;
+    let heldout = Tensor::new(heldout.as_slice(), &device)?.unsqueeze(0)?;
+    let states = model.residuals(&heldout)?;
+    let p = heldout.dim(1)? - 1;
+    let hidden = states[source].narrow(1, p, 1)?.contiguous()?;
+    let ids = [" France", " Germany"]
+        .iter()
+        .map(|word| {
+            let encoding = tok.encode(*word, false).unwrap();
+            assert_eq!(encoding.len(), 1, "concept must be one token");
+            encoding.get_ids()[0]
+        })
+        .collect::<Vec<_>>();
+    let frame = LensFrame::from_tokens(&registry, source, model.lm_head(), &ids, 1e-6)?;
+    let swap = frame.permute(&hidden, &[1, 0], 1.)?;
+    let restored = frame.permute(&swap, &[1, 0], 1.)?;
+    compare(&restored, &hidden, 2e-3, 1e-4)?;
+    compare(&frame.permute(&hidden, &[1, 0], 0.)?, &hidden, 1e-6, 1e-6)?;
+    // Only final prompt position is edited; then run the actual remaining block.
+    let edited = Tensor::cat(&[states[source].narrow(1, 0, p)?, swap], 1)?;
+    let after = model.logits(&model.suffix(source, source + 1, &edited)?.narrow(1, p, 1)?)?;
+    let before = model.logits(&states[source + 1].narrow(1, p, 1)?)?;
+    assert!(
+        (&after - &before)?.sqr()?.sum_all()?.to_scalar::<f32>()? > 1e-6,
+        "causal swap must reach downstream logits"
+    );
+    let scores_before = before
+        .flatten_all()?
+        .to_vec1::<f32>()?
+        .into_iter()
+        .map(f64::from)
+        .collect::<Vec<_>>();
+    let scores_after = after
+        .flatten_all()?
+        .to_vec1::<f32>()?
+        .into_iter()
+        .map(f64::from)
+        .collect::<Vec<_>>();
+    let result = jacobian_lens::research::metrics::measure_intervention(
+        &scores_before,
+        &scores_after,
+        ids[1] as usize,
+    )
+    .unwrap();
+    println!("Held-out concept swap measurement: {result:?}");
+    // This is an estimator/intervention test, not a minimum quality assertion
+    // for a one-prompt, one-layer lens on a 0.5B model.
+    Ok(())
+}

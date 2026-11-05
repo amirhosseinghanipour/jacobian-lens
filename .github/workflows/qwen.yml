@@ -20,4 +20,8 @@ jobs:
       - run: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
       - run: pip install transformers==4.49.0 safetensors==0.5.3
       - run: python scripts/qwen_oracle.py "$JLENS_QWEN_DIR" "$JLENS_QWEN_ORACLE"
-      - run: cargo test --release --test qwen -- --ignored --nocapture
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen-pytorch-oracle
+          path: /tmp/qwen-oracle.safetensors
+      - run: cargo test --release --test qwen -- --ignored --nocapture --test-threads=1

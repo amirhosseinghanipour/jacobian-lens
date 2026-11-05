@@ -1,0 +1,9 @@
+Jacobian Lens for Rust
+
+The prompt datasets in data/evaluations and data/experiments are from
+anthropics/jacobian-lens, commit 581d398613e5602a5af361e1c34d3a92ea82ba8e.
+Copyright 2026 Anthropic PBC. Licensed under Apache License 2.0.
+https://github.com/anthropics/jacobian-lens
+
+Methodology: Verbalizable Representations Form a Global Workspace in Language Models.
+https://transformer-circuits.pub/2026/workspace/index.html

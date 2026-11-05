@@ -11,7 +11,7 @@ pub trait DifferentiableTransformer: Send + Sync {
     fn embed_tokens(&self, ids: &Tensor) -> Result<Tensor>;
     fn forward_block(&self, layer: usize, hidden: &Tensor) -> Result<Tensor>;
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FittingConfig {
     pub source_layers: Vec<usize>,
     pub target_layer: usize,
