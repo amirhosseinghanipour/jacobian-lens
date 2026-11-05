@@ -1,0 +1,26 @@
+[package]
+name = "jacobian-lens"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Candle Jacobian lens decoding and explicit residual-stream tracking"
+
+[features]
+default = []
+cuda = ["candle-core/cuda", "candle-nn/cuda"]
+metal = ["candle-core/metal", "candle-nn/metal"]
+
+[dependencies]
+candle-core = "0.11.1"
+candle-nn = "0.11.1"
+memmap2 = "0.9"
+safetensors = "0.8"
+thiserror = "2"
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jlens-research = { path = "crates/research-core", version = "0.1.0" }
+
+[dev-dependencies]
+tempfile = "3"
