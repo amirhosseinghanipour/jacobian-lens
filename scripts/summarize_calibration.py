@@ -58,11 +58,57 @@ def summarize(raw, splits):
     return output
 
 
+def summarize_causal(raw):
+    measurements = raw['measurements']
+    output = {'skipped': raw['skipped'], 'endpoint': raw['endpoint'], 'layers': {}}
+    for layer in sorted({r['layer'] for r in measurements}):
+        rows = [r for r in measurements if r['layer'] == layer]
+        conditions = {}
+        for condition in sorted({r['condition'] for r in rows}):
+            values = [r for r in rows if r['condition'] == condition]
+            eligible = [r for r in values if not r['answer_tokens_identical']]
+            capable = [r for r in eligible if r['source_task_answer_rank'] == 0 and r['counterfactual_task_answer_rank'] == 0]
+            conditions[condition] = {
+                'items': len(values), 'distinct_answer_items': len(eligible),
+                'mean_counterfactual_log_odds_change': mean(r['counterfactual_log_odds_change'] for r in eligible) if eligible else None,
+                'mean_kl': mean(r['counterfactual_measurement']['kl_before_after'] for r in values),
+                'both_unmodified_tasks_correct_items': len(capable),
+                'capability_conditioned_log_odds_change': mean(r['counterfactual_log_odds_change'] for r in capable) if capable else None,
+            }
+        # Pair each concept swap with its three norm-matched controls. Resample
+        # entire function templates to preserve argument dependence within them.
+        clusters = {}
+        for row in rows:
+            if row['condition'] != 'swap-1' or row['answer_tokens_identical']:
+                continue
+            controls = [r for r in rows if r['item'] == row['item'] and r['condition'].startswith('random-swap-norm-')]
+            if len(controls) != 3:
+                raise ValueError('missing matched causal controls')
+            difference = row['counterfactual_log_odds_change'] - mean(r['counterfactual_log_odds_change'] for r in controls)
+            clusters.setdefault((row['category'], row['function']), []).append(difference)
+        values = list(clusters.values())
+        rng = random.Random(20261105)
+        boot = sorted(mean(mean(cluster) for cluster in rng.choices(values, k=len(values))) for _ in range(2000)) if values else []
+        output['layers'][str(layer)] = {'conditions': conditions, 'swap_minus_random': {
+            'template_clusters': len(values), 'mean_log_odds_difference': mean(map(mean, values)) if values else None,
+            'template_bootstrap_95_percent': [boot[50], boot[1949]] if boot else None}}
+    return output
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('raw', type=Path);p.add_argument('splits', type=Path);p.add_argument('output', type=Path)
+    p.add_argument('raw', type=Path);p.add_argument('splits', type=Path);p.add_argument('output', type=Path);p.add_argument('--causal', type=Path)
     a=p.parse_args()
-    result=summarize(json.loads(a.raw.read_text()),json.loads(a.splits.read_text()))
+    splits=json.loads(a.splits.read_text())
+    amendment_path=Path('experiments/qwen-calibration/protocol-amendments.json')
+    amendments=json.loads(amendment_path.read_text())
+    for task,names in amendments['development_exclusions'].items():
+        for name in names:
+            splits[task][name]='development'
+    result=summarize(json.loads(a.raw.read_text()),splits)
+    result['protocol_amendments']=amendments
+    causal_path = a.causal or a.raw.with_name('causal.json')
+    if causal_path.exists():
+        result['causal'] = summarize_causal(json.loads(causal_path.read_text()))
     a.output.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result['test']['primary_comparisons'],indent=2))
 

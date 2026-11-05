@@ -45,7 +45,7 @@ def main():
     evaluation_hashes = {}
     excluded = set()
     splits = {}
-    previous_smoke = {"carnival-ocean", "amazon-language", "firstletter-paris-country"}
+    previous_smoke = {"carnival-ocean", "amazon-language", "mars-color", "firstletter-paris-country"}
     for path in sorted(Path("data/evaluations").glob("*.json")):
         evaluation_hashes[str(path)] = digest(path.read_bytes())
         items = json.loads(path.read_text())["items"]

@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "development_exclusions": {"lens-eval-multihop": ["mars-color"]},
+  "reason": "The earlier three-item smoke evaluation included mars-color. Exclude it from the final test split, alongside the other previously inspected smoke items. This amendment precedes all corpus-calibrated held-out evaluation and does not change calibration windows or metrics."
+}

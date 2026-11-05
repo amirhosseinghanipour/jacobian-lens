@@ -38,6 +38,24 @@ fn rank(s: &[f32], ids: &[u32]) -> Option<usize> {
         })
         .min()
 }
+fn checked_lens(
+    path: impl AsRef<Path>,
+    model_id: &str,
+    device: &Device,
+) -> Result<JacobianLensRegistry> {
+    let bytes = std::fs::read(path.as_ref())?;
+    let (_, header) = safetensors::SafeTensors::read_metadata(&bytes)?;
+    if header
+        .metadata()
+        .as_ref()
+        .and_then(|m| m.get("model_id"))
+        .map(String::as_str)
+        != Some(model_id)
+    {
+        return Err(err("lens model/tokenizer identity mismatch"));
+    }
+    JacobianLensRegistry::load(path, device, DType::F32)
+}
 fn main() -> Result<()> {
     let a: Vec<_> = std::env::args().skip(1).collect();
     if a.len() < 4 {
@@ -55,7 +73,7 @@ fn main() -> Result<()> {
     let tokenizer = Tokenizer::from_file(Path::new(&a[1]).join("tokenizer.json")).map_err(err)?;
     match a[0].as_str() {
         "causal" => {
-            let lens = JacobianLensRegistry::load(&a[2], &device, DType::F32)?;
+            let lens = checked_lens(&a[2], &model_id, &device)?;
             let result = causal::run(&model, &lens, &tokenizer, &device)?;
             write(&a[3], &result)?;
         }
@@ -167,7 +185,7 @@ fn main() -> Result<()> {
             for name in ["main-100", "main-1000", "replicate-100"] {
                 let path = lens_dir.join(format!("{name}.safetensors"));
                 if path.exists() {
-                    lenses.insert(name, JacobianLensRegistry::load(path, &device, DType::F32)?);
+                    lenses.insert(name, checked_lens(path, &model_id, &device)?);
                 }
             }
             if lenses.is_empty() {
