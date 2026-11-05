@@ -3,6 +3,8 @@ name = "jlens-research"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+authors = ["Amirhossein Ghanipour"]
+repository = "https://github.com/amirhosseinghanipour/jacobian-lens"
 description = "Auditable CPU reference algorithms for Jacobian lens research"
 
 [dependencies]

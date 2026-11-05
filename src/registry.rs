@@ -166,6 +166,14 @@ impl JacobianLensRegistry {
     }
     /// Write canonical multi-layer safetensors atomically.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        self.save_with_metadata(path, std::collections::HashMap::new())
+    }
+    /// Canonical weights plus research provenance in a single atomic artifact.
+    pub fn save_with_metadata(
+        &self,
+        path: impl AsRef<Path>,
+        metadata: std::collections::HashMap<String, String>,
+    ) -> Result<()> {
         let path = path.as_ref();
         let parent = path
             .parent()
@@ -176,7 +184,7 @@ impl JacobianLensRegistry {
             .layers()
             .map(|l| Ok((format!("jacobians.{l}"), self.jacobian(l)?)))
             .collect::<Result<std::collections::HashMap<_, _>>>()?;
-        candle_core::safetensors::save(&tensors, temp.path())?;
+        safetensors::serialize_to_file(&tensors, Some(metadata), temp.path())?;
         temp.as_file().sync_all()?;
         temp.persist(path).map_err(|e| LensError::Io(e.error))?;
         #[cfg(unix)]

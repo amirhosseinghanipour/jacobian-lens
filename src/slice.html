@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#1c2925;background:#f6f7f3}body{margin:0;padding:2rem;max-width:1500px}h1{font-size:1.5rem}p{line-height:1.6}#context{white-space:pre-wrap;border:1px solid #cad2ca;padding:1rem;background:white;max-height:12rem;overflow:auto}label,select{font-size:1rem}select{padding:.4rem;max-width:100%}.scroll{overflow:auto;margin:1rem 0}table{border-collapse:collapse;background:white}th,td{border:1px solid #dce2dc;padding:.45rem;text-align:left;white-space:nowrap}th{background:#e7ece5}button{font:inherit;border:0;background:transparent;text-align:left;cursor:pointer;padding:.3rem}button:focus-visible{outline:2px solid #186e4b}#detail{white-space:pre-wrap;background:white;border-left:4px solid #186e4b;padding:1rem;min-height:4rem}.note{color:#52635a;font-size:.85rem}.low{color:#61766a}caption{text-align:left;padding:.5rem 0;font-weight:bold}
+</style>
+<h1>__TITLE__</h1>
+<p class="note">Jacobian lens readouts · Displayed ranks are one-based, over the full vocabulary. The final layer shows the model output.</p>
+<pre id="context" aria-label="Prompt tokens"></pre>
+<label for="tracked">Track token </label><select id="tracked"><option value="">Select a token</option></select>
+<div class="scroll"><table id="grid"><caption>Layer × position readout</caption></table></div>
+<pre id="detail" aria-live="polite">Select a cell to inspect its top tokens.</pre>
+<div class="scroll"><table id="ranks"><caption>Tracked token ranks</caption></table></div>
+<script id="slice-data" type="application/json">__DATA__</script>
+<script>
+'use strict';
+const d=JSON.parse(document.getElementById('slice-data').textContent), s=d.slice;
+document.getElementById('context').textContent=d.context_tokens.join('');
+const select=document.getElementById('tracked');
+for(const id of s.tracked_ids){const o=document.createElement('option');o.value=id;o.textContent=(d.vocabulary[id]||'')+' ['+id+']';select.append(o);}
+const cells=new Map(s.cells.map(c=>[c.layer+':'+c.position,c]));
+function table(id,rankIndex){const t=document.getElementById(id);t.replaceChildren();const cap=document.createElement('caption');cap.textContent=rankIndex===null?'Layer × position readout':'Tracked token ranks';t.append(cap);const tr=document.createElement('tr');const corner=document.createElement('th');corner.textContent='Layer / position';tr.append(corner);for(let p=s.context_offset;p<s.context_len;p++){const th=document.createElement('th');th.scope='col';th.textContent=p+' · '+d.context_tokens[p];tr.append(th);}t.append(tr);for(const l of s.layers){const row=document.createElement('tr'),th=document.createElement('th');th.scope='row';th.textContent=l;row.append(th);for(let p=s.context_offset;p<s.context_len;p++){const c=cells.get(l+':'+p),td=document.createElement('td');if(rankIndex===null){const b=document.createElement('button');b.textContent=d.vocabulary[c.top_ids[0]]+' · '+(c.top_ranks[0]+1);b.setAttribute('aria-label','Layer '+l+', position '+p);b.onclick=()=>{document.getElementById('detail').textContent='Layer '+l+' · position '+p+'\n'+c.top_ids.map((id,i)=>String(c.top_ranks[i]+1).padStart(7)+'  '+d.vocabulary[id]+' ['+id+']').join('\n');};td.append(b);}else{const r=c.tracked_ranks[rankIndex]+1;td.textContent=r;td.style.background='hsl(145 28% '+(70+27*Math.log1p(r)/Math.log1p(s.vocab_size))+'%)';}row.append(td);}t.append(row);}}
+table('grid',null);select.onchange=()=>{const index=s.tracked_ids.indexOf(Number(select.value));if(select.value!==''&&index>=0)table('ranks',index);else document.getElementById('ranks').replaceChildren();};if(s.pinned.length){select.value=String(s.pinned[0]);select.onchange();}
+</script></html>

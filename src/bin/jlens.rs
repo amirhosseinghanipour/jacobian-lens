@@ -11,6 +11,13 @@ fn usage() -> LensError {
 }
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--help" || arg == "-h")
+    {
+        println!("{}", usage());
+        return Ok(());
+    }
     if args.len() < 5 || (args.first().is_some_and(|s| s == "eval") && args.len() < 6) {
         return Err(usage());
     }
@@ -56,11 +63,52 @@ fn main() -> Result<()> {
                     Ok(Tensor::new(e.get_ids(), &device)?.unsqueeze(0)?)
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let (lens, count) = jacobian_lens::fit(&model, &ids, &config)?;
-            lens.save(&args[3])?;
+            let model_id = jacobian_lens::provenance::qwen_identity(&args[1])?;
+            let corpus_id = jacobian_lens::provenance::sha256_file(&args[2])?;
+            let checkpoint = Path::new(&args[3]).with_extension("fit.safetensors");
+            let mut state = if checkpoint.exists() {
+                jacobian_lens::FitCheckpoint::load(
+                    &checkpoint,
+                    &config,
+                    &model_id,
+                    &corpus_id,
+                    &device,
+                )?
+            } else {
+                jacobian_lens::FitCheckpoint::new(
+                    config.clone(),
+                    model.hidden_size(),
+                    model_id.clone(),
+                    corpus_id.clone(),
+                )?
+            };
+            state.run_until(&model, &ids, ids.len(), Some(&checkpoint))?;
+            let count = state.successes();
+            let lens = state.registry()?;
+            let metadata = std::collections::HashMap::from([
+                ("model_id".into(), model_id),
+                ("corpus_id".into(), corpus_id),
+                ("n_prompts".into(), count.to_string()),
+                (
+                    "fit_config".into(),
+                    serde_json::to_string(&config)
+                        .map_err(|e| LensError::Invalid(e.to_string()))?,
+                ),
+            ]);
+            lens.save_with_metadata(&args[3], metadata)?;
             println!("Fitted {} layers on {count} prompts", lens.layers().count());
         }
         "eval" => {
+            let bytes = std::fs::read(&args[2])?;
+            let (_, metadata) = safetensors::SafeTensors::read_metadata(&bytes)?;
+            if let Some(expected) = metadata.metadata().as_ref().and_then(|m| m.get("model_id"))
+                && *expected != jacobian_lens::provenance::qwen_identity(&args[1])?
+            {
+                return Err(LensError::Invalid(
+                    "lens provenance does not match model/tokenizer artifacts".into(),
+                ));
+            }
+            drop(bytes);
             let registry = JacobianLensRegistry::load(&args[2], &device, DType::F32)?;
             let dataset: EvaluationDataset = serde_json::from_slice(&std::fs::read(&args[3])?)
                 .map_err(|e| LensError::Invalid(e.to_string()))?;

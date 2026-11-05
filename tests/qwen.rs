@@ -147,6 +147,18 @@ fn qwen_full_fit_serialization_and_concept_swap() -> Result<()> {
     let heldout = encode_readout(&tok, item, ReadoutPosition::BeforeTarget)?;
     let heldout = Tensor::new(heldout.as_slice(), &device)?.unsqueeze(0)?;
     let states = model.residuals(&heldout)?;
+    let mut tracker = jacobian_lens::LensTracker::new(
+        &registry,
+        &model,
+        &tok,
+        [source],
+        vec![(0, heldout.dim(1)? - 1)],
+        5,
+    )?;
+    let traced = model.forward_tracked(&heldout, Some(&mut tracker), None)?;
+    assert_eq!(tracker.observations().len(), 1);
+    compare(&traced, &model.logits(states.last().unwrap())?, 1e-5, 1e-5)?;
+
     let p = heldout.dim(1)? - 1;
     let hidden = states[source].narrow(1, p, 1)?.contiguous()?;
     let ids = [" France", " Germany"]
@@ -189,6 +201,47 @@ fn qwen_full_fit_serialization_and_concept_swap() -> Result<()> {
     )
     .unwrap();
     println!("Held-out concept swap measurement: {result:?}");
+    let slice = jacobian_lens::visualization::compute_slice(
+        &model,
+        &registry,
+        &tok,
+        &heldout,
+        &jacobian_lens::research::slice::SliceConfig {
+            top_n: 5,
+            max_tracked: Some(10),
+            pinned: ids.iter().map(|&id| id as usize).collect(),
+            layer_stride: 1,
+            last_n: Some(3),
+            display_mask: None,
+        },
+    )?;
+    assert_eq!(slice.slice.layers, vec![source, source + 1]);
+    let final_cell = slice
+        .slice
+        .cells
+        .iter()
+        .find(|c| c.layer == source + 1 && c.position == p)
+        .unwrap();
+    let expected_ranks = jacobian_lens::research::metrics::ranks(&scores_before).unwrap();
+    assert_eq!(expected_ranks[final_cell.top_ids[0]], 0);
+    for (column, &id) in slice.slice.tracked_ids.iter().enumerate() {
+        assert_eq!(final_cell.tracked_ranks[column], expected_ranks[id]);
+    }
+    if let Ok(directory) = std::env::var("JLENS_ARTIFACT_DIR") {
+        std::fs::create_dir_all(&directory)?;
+        jacobian_lens::visualization::save_page(
+            &slice,
+            "Qwen held-out J-lens readout",
+            std::path::Path::new(&directory).join("qwen-slice.html"),
+        )?;
+        let output = serde_json::json!({"model":"Qwen/Qwen2.5-0.5B-Instruct","revision":"7ae557604adf67be50417f59c2c2f167def9a775","calibration_prompts":n,"source_layer":source,"held_out_item":item.name,"intervention":result});
+        jacobian_lens::research::save_json(
+            &std::path::Path::new(&directory).join("intervention.json"),
+            &output,
+        )
+        .unwrap();
+    }
+
     // This is an estimator/intervention test, not a minimum quality assertion
     // for a one-prompt, one-layer lens on a 0.5B model.
     Ok(())

@@ -57,6 +57,10 @@ cargo run --release --bin jlens -- eval \
   data/evaluations/lens-eval-multihop.json target results.json 10
 ```
 
+Fitting automatically resumes from the adjacent `.fit.safetensors` checkpoint.
+Content hashes bind checkpoints to the model, tokenizer, and ordered corpus.
+Changing any of those artifacts or fitting options rejects resume.
+
 Keep calibration prompts separate from evaluation prompts. Model-wide fitting is
 compute intensive; a small corpus or a single late layer is useful for numerical
 checks, not a substitute for a representative calibration corpus.
@@ -81,6 +85,8 @@ The library accepts explicit synonym maps for arithmetic and operation names.
 - `qwen2::Qwen2`: dense Qwen2/Qwen2.5 loading, residual capture, differentiable
   block execution, final readout, and suffix execution after interventions.
 - `LensFrame`: device-side coordinate permutations and ablations.
+- `visualization::compute_slice`, `build_page`: token rank tracking and standalone
+  interactive HTML, with the actual model output as the final row.
 - `research`: f64 reference fitting, atomic resumable checkpoints, sparse
   nonnegative gradient pursuit, layer/position slices, ranks, and paired metrics.
 

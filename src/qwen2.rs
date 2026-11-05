@@ -76,6 +76,8 @@ struct Block {
     up: Linear,
     down: Linear,
 }
+pub type ResidualEdit<'a> = dyn FnMut(usize, &Tensor) -> Result<Tensor> + 'a;
+
 pub struct Qwen2 {
     config: Qwen2Config,
     embedding: candle_nn::Embedding,
@@ -150,6 +152,40 @@ impl Qwen2 {
             sin: angles.sin()?.to_dtype(vb.dtype())?,
         })
     }
+    /// Shared-model inference with request-local tracking and optional edits.
+    /// Edits run immediately after a block; observations see the edited state.
+    pub fn forward_tracked(
+        &self,
+        ids: &Tensor,
+        mut tracker: Option<&mut crate::LensTracker<'_>>,
+        mut edit: Option<&mut ResidualEdit<'_>>,
+    ) -> Result<Tensor> {
+        if let Some(t) = tracker.as_deref_mut() {
+            t.validate_layer_count(self.layer_count())?;
+            t.clear();
+        }
+        let mut h = self.embed_tokens(ids)?;
+        for layer in 0..self.layer_count() {
+            h = self.forward_block(layer, &h)?;
+            if let Some(edit) = edit.as_deref_mut() {
+                let next = edit(layer, &h)?;
+                if next.dims() != h.dims()
+                    || next.dtype() != h.dtype()
+                    || !next.device().same_device(h.device())
+                {
+                    return Err(LensError::Invalid(
+                        "intervention changed residual shape/dtype/device".into(),
+                    ));
+                }
+                h = next;
+            }
+            if let Some(t) = tracker.as_deref_mut() {
+                t.observe(layer, &h)?;
+            }
+        }
+        self.logits(&h)
+    }
+
     pub fn config(&self) -> &Qwen2Config {
         &self.config
     }

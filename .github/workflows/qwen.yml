@@ -9,6 +9,7 @@ jobs:
       JLENS_QWEN_DIR: models/Qwen2.5-0.5B-Instruct
       JLENS_QWEN_ORACLE: /tmp/qwen-oracle.safetensors
       RAYON_NUM_THREADS: '2'
+      JLENS_ARTIFACT_DIR: /tmp/qwen-results
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,3 +26,7 @@ jobs:
           name: qwen-pytorch-oracle
           path: /tmp/qwen-oracle.safetensors
       - run: cargo test --release --test qwen -- --ignored --nocapture --test-threads=1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qwen-research-results
+          path: /tmp/qwen-results

@@ -3,6 +3,9 @@ name = "jacobian-lens"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+authors = ["Amirhossein Ghanipour"]
+repository = "https://github.com/amirhosseinghanipour/jacobian-lens"
+include = ["src/**", "examples/**", "tests/**", "data/**", "README.md", "LICENSE", "NOTICE", "Cargo.toml"]
 description = "Candle Jacobian lens decoding and explicit residual-stream tracking"
 
 [features]
@@ -20,6 +23,7 @@ tokenizers = { version = "0.22", default-features = false, features = ["fancy-re
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 jlens-research = { path = "crates/research-core", version = "0.1.0" }
 
 tempfile = "3"

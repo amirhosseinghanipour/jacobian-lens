@@ -1,6 +1,7 @@
 //! Inference-only Jacobian lens: `h @ J.T -> model final norm -> lm_head`.
 //! Layer indices refer to residual block **outputs**, before the final norm.
 #![deny(unsafe_op_in_unsafe_fn)]
+#![doc = include_str!("../README.md")]
 
 mod checkpoint;
 mod decode;
@@ -8,7 +9,9 @@ pub use checkpoint::*;
 pub mod evaluation;
 mod fitting;
 mod intervention;
+pub mod visualization;
 pub use intervention::*;
+pub mod provenance;
 pub mod qwen2;
 pub use fitting::*;
 pub use jlens_research as research;
