@@ -301,7 +301,8 @@ impl DifferentiableTransformer for Qwen2 {
 }
 impl Unembed for Qwen2 {
     fn logits(&self, h: &Tensor) -> Result<Tensor> {
-        Ok(self.head.forward(&self.norm.forward(h)?)?)
+        let h = h.to_dtype(self.head.weight().dtype())?;
+        Ok(self.head.forward(&self.norm.forward(&h)?)?)
     }
 }
 impl TransformerForward for Qwen2 {

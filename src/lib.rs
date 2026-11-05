@@ -3,7 +3,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![doc = include_str!("../README.md")]
 
+mod application;
 mod checkpoint;
+pub use application::*;
 mod decode;
 pub use checkpoint::*;
 pub mod evaluation;

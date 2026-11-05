@@ -76,7 +76,8 @@ The library accepts explicit synonym maps for arithmetic and operation names.
 ## Library API
 
 - `JacobianLensRegistry`: load, save, merge, transport, `decode_jspace`, and
-  selected token directions. Tensors are immutable and shareable across workers.
+  selected token directions. `apply` supports negative positions and the logit-lens
+  baseline. Tensors are immutable and shareable across workers.
 - `MappedLens`: zero-copy safetensors views borrowing an owned file mapping.
 - `LensTracker`: selected layer/position top-K summaries, bounded across forwards.
 - `TransformerForward`: explicit block-output interception for model adapters.

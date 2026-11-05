@@ -222,6 +222,48 @@ fn qwen_full_fit_serialization_and_concept_swap() -> Result<()> {
         .iter()
         .find(|c| c.layer == source + 1 && c.position == p)
         .unwrap();
+    let applied = registry.apply(
+        &model,
+        &heldout,
+        &jacobian_lens::ApplyOptions {
+            layers: Some(vec![source]),
+            positions: Some(vec![-1]),
+            max_seq_len: 512,
+            use_jacobian: true,
+        },
+    )?;
+    compare(
+        &applied.model_logits,
+        &before.reshape((1, model.config().vocab_size))?,
+        1e-5,
+        1e-5,
+    )?;
+    compare(
+        &applied.lens_logits[&source],
+        &registry
+            .decode_jspace(source, &hidden, &model)?
+            .reshape((1, model.config().vocab_size))?,
+        1e-5,
+        1e-5,
+    )?;
+    let baseline = registry.apply(
+        &model,
+        &heldout,
+        &jacobian_lens::ApplyOptions {
+            layers: Some(vec![source]),
+            positions: Some(vec![-1]),
+            max_seq_len: 512,
+            use_jacobian: false,
+        },
+    )?;
+    compare(
+        &baseline.lens_logits[&source],
+        &model
+            .logits(&hidden)?
+            .reshape((1, model.config().vocab_size))?,
+        1e-5,
+        1e-5,
+    )?;
     let expected_ranks = jacobian_lens::research::metrics::ranks(&scores_before).unwrap();
     assert_eq!(expected_ranks[final_cell.top_ids[0]], 0);
     for (column, &id) in slice.slice.tracked_ids.iter().enumerate() {
