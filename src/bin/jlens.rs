@@ -21,7 +21,15 @@ fn main() -> Result<()> {
     if args.len() < 5 || (args.first().is_some_and(|s| s == "eval") && args.len() < 6) {
         return Err(usage());
     }
-    let device = Device::Cpu;
+    let device = match std::env::var("JLENS_DEVICE").as_deref() {
+        Ok("cuda") => Device::new_cuda(0)?,
+        Ok("cpu") | Err(_) => Device::Cpu,
+        Ok(_) => {
+            return Err(LensError::Invalid(
+                "JLENS_DEVICE must be cpu or cuda".into(),
+            ));
+        }
+    };
     let tokenizer = Tokenizer::from_file(Path::new(&args[1]).join("tokenizer.json"))
         .map_err(|e| LensError::Tokenizer(e.to_string()))?;
     let model = Qwen2::load(&args[1], &device, DType::F32)?;
@@ -82,7 +90,18 @@ fn main() -> Result<()> {
                     corpus_id.clone(),
                 )?
             };
-            state.run_until(&model, &ids, ids.len(), Some(&checkpoint))?;
+            while state.next_index() < ids.len() {
+                let started = std::time::Instant::now();
+                state.run_until(&model, &ids, state.next_index() + 1, Some(&checkpoint))?;
+                eprintln!(
+                    "prompt {}/{}: {:.2}s, {} fitted, {} skipped",
+                    state.next_index(),
+                    ids.len(),
+                    started.elapsed().as_secs_f64(),
+                    state.successes(),
+                    state.skipped()
+                );
+            }
             let count = state.successes();
             let lens = state.registry()?;
             let metadata = std::collections::HashMap::from([

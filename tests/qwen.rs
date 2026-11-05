@@ -24,7 +24,11 @@ fn compare(actual: &Tensor, expected: &Tensor, absolute: f32, relative: f32) -> 
 fn qwen_residual_logits_and_jacobian_rows_match_pytorch() -> Result<()> {
     let directory = std::env::var("JLENS_QWEN_DIR").expect("set JLENS_QWEN_DIR");
     let oracle = std::env::var("JLENS_QWEN_ORACLE").expect("set JLENS_QWEN_ORACLE");
-    let device = Device::Cpu;
+    let device = if std::env::var("JLENS_DEVICE").as_deref() == Ok("cuda") {
+        Device::new_cuda(0)?
+    } else {
+        Device::Cpu
+    };
     let fixture = candle_core::safetensors::load(oracle, &device)?;
     let model = Qwen2::load(directory, &device, DType::F32)?;
     let ids = fixture["input_ids"].to_dtype(DType::U32)?;
@@ -107,7 +111,11 @@ fn qwen_full_fit_serialization_and_concept_swap() -> Result<()> {
     use tokenizers::Tokenizer;
     let directory = std::env::var("JLENS_QWEN_DIR").expect("set JLENS_QWEN_DIR");
     let oracle = std::env::var("JLENS_QWEN_ORACLE").expect("set JLENS_QWEN_ORACLE");
-    let device = Device::Cpu;
+    let device = if std::env::var("JLENS_DEVICE").as_deref() == Ok("cuda") {
+        Device::new_cuda(0)?
+    } else {
+        Device::Cpu
+    };
     let fixture = candle_core::safetensors::load(oracle, &device)?;
     let model = Qwen2::load(&directory, &device, DType::F32)?;
     let ids = fixture["input_ids"].to_dtype(DType::U32)?;

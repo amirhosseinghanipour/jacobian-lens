@@ -42,8 +42,9 @@ pub struct PromptJacobian {
     pub valid_positions: usize,
 }
 /// Same reduction as Python: target-position sum, source-position mean.
-/// Candle retains leaf gradients, so each source layer is made a fresh variable
-/// and its suffix is recomputed. Parameter tensors must be frozen.
+/// Zero-valued leaf perturbations expose every requested source gradient in one
+/// retained suffix graph. Their gradients are exactly d(output)/d(block output).
+/// Independent batch members carry output cotangents; parameters stay frozen.
 pub fn jacobian_for_prompt(
     model: &impl DifferentiableTransformer,
     ids: &Tensor,
@@ -61,31 +62,61 @@ pub fn jacobian_for_prompt(
         return Err(LensError::Invalid("prompt too short".into()));
     }
     let valid = seq - 1 - config.skip_first;
-    let ids = ids.narrow(1, 0, seq)?;
-    let mut h = model.embed_tokens(&ids)?.detach();
-    let mut sources = BTreeMap::new();
-    for layer in 0..=config.target_layer {
+    let d = model.hidden_size();
+    if d == 0 {
+        return Err(LensError::Invalid("zero model width".into()));
+    }
+    let count = config.dim_batch.min(d);
+    let first = config.source_layers[0];
+    let mut h = model.embed_tokens(&ids.narrow(1, 0, seq)?)?.detach();
+    for layer in 0..=first {
         h = model.forward_block(layer, &h)?.detach();
+    }
+    let source = Var::from_tensor(&h.repeat((count, 1, 1))?)?;
+    let mut leaves = BTreeMap::from([(first, source)]);
+    h = leaves[&first].as_tensor().clone();
+    for layer in first + 1..=config.target_layer {
+        h = model.forward_block(layer, &h)?;
         if config.source_layers.contains(&layer) {
-            sources.insert(layer, h.clone());
+            let perturbation = Var::zeros(h.shape(), h.dtype(), h.device())?;
+            h = h.add(perturbation.as_tensor())?;
+            leaves.insert(layer, perturbation);
         }
     }
-    let dimensions: Vec<_> = (0..model.hidden_size()).collect();
-    let mut jacobians = BTreeMap::new();
-    for (layer, state) in sources {
-        jacobians.insert(
-            layer,
-            jacobian_rows(
-                model,
-                &state,
-                layer,
-                config.target_layer,
-                config.skip_first,
-                &dimensions,
-                config.dim_batch,
-            )?,
-        );
+    let mut rows: BTreeMap<usize, Vec<Tensor>> = config
+        .source_layers
+        .iter()
+        .map(|&l| (l, Vec::new()))
+        .collect();
+    for start in (0..d).step_by(count) {
+        let active = (d - start).min(count);
+        let mut cotangent = vec![0f32; count * seq * d];
+        for b in 0..active {
+            for p in config.skip_first..seq - 1 {
+                cotangent[(b * seq + p) * d + start + b] = 1.;
+            }
+        }
+        let cotangent =
+            Tensor::from_vec(cotangent, (count, seq, d), h.device())?.to_dtype(h.dtype())?;
+        let gradients = h.mul(&cotangent)?.sum_all()?.backward()?;
+        for (&layer, leaf) in &leaves {
+            let gradient = gradients
+                .get(leaf.as_tensor())
+                .ok_or_else(|| LensError::Invalid("missing source gradient".into()))?;
+            rows.get_mut(&layer).expect("configured source").push(
+                gradient
+                    .narrow(0, 0, active)?
+                    .narrow(1, config.skip_first, valid)?
+                    .to_dtype(DType::F32)?
+                    .mean(1)?
+                    .detach(),
+            );
+        }
     }
+    let jacobians = rows
+        .into_iter()
+        .map(|(l, rows)| Ok((l, Tensor::cat(&rows, 0)?)))
+        .collect::<Result<_>>()?;
     Ok(PromptJacobian {
         jacobians,
         seq_len: seq,
