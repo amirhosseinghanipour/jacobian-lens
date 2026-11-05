@@ -26,6 +26,7 @@ def main():
         subprocess.run([str(a.binary),'fit',str(a.model),str(a.corpus/f'shard-{shard:03}.json'),str(a.output/f'shard-{shard:03}.safetensors')],env=env,check=True)
     subprocess.run([str(a.binary),'merge',str(a.model),str(a.output),str(a.output)],env=env,check=True)
     subprocess.run([str(a.binary),'eval',str(a.model),str(a.output),str(a.output/'readouts.json')],env=env,check=True)
+    subprocess.run([str(a.binary),'causal',str(a.model),str(a.output/'main-1000.safetensors'),str(a.output/'causal.json')],env=env,check=True)
     subprocess.run(['python3','scripts/summarize_calibration.py',str(a.output/'readouts.json'),str(a.corpus/'splits.json'),str(a.output/'summary.json')],check=True)
 
 if __name__ == '__main__':

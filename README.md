@@ -25,7 +25,8 @@ Fitting follows the reference estimator: sum derivatives over valid target
 positions, average over valid source positions, then average prompts equally.
 By default the first 16 positions and final position are excluded. `dim_batch`
 controls independent output cotangents per backward pass. The Candle fitter
-recomputes each source layer's suffix to obtain its leaf-variable gradients.
+retains one suffix graph with zero-valued leaf perturbations at source layers,
+reading all source gradients from each backward pass.
 
 J-space token directions are rows of `W_U J`. `LensFrame` uses an SVD-checked
 pseudoinverse for coordinate swaps and span ablations. With columns `V`, a full
@@ -162,3 +163,37 @@ These tests establish numerical and intervention behavior. Empirical replication
 of workspace or alignment findings requires the corresponding models, calibration
 corpora, experimental controls, and held-out outcomes. Public prompt data is
 included under Apache-2.0; see `NOTICE` for attribution and upstream revision.
+
+## CUDA calibration experiment
+
+Build with a compatible NVIDIA CUDA toolkit and driver:
+
+```sh
+cargo build --release --features cuda --bins
+JLENS_DEVICE=cuda cargo test --release --features cuda --test qwen -- --ignored --test-threads=1
+```
+
+`JLENS_DEVICE=cuda` selects GPU zero explicitly; unavailable CUDA returns an error.
+`JLENS_DIM_BATCH` controls the independent cotangent batch for `jlens-experiment`.
+The frozen design is in `experiments/qwen-calibration/protocol.json`.
+Prepare independent 128-token FineWeb windows, then fit and evaluate:
+
+```sh
+pip install pyarrow huggingface-hub==0.30.2 tokenizers==0.22.2
+python scripts/prepare_calibration.py models/Qwen2.5-0.5B-Instruct/tokenizer.json artifacts/calibration/corpus --revision 9bb295ddab0e05d785b879661af7260fed5140fc
+python scripts/run_calibration.py models/Qwen2.5-0.5B-Instruct artifacts/calibration/corpus artifacts/calibration/results
+```
+
+The main 100-prompt sample is a prefix of the 1,000-prompt sample; the independent
+100-prompt replication uses disjoint documents. Sampling shuffles source files
+and a bounded buffer of documents; it is not an IID draw from all FineWeb or
+Qwen's undisclosed pretraining mixture. Corpus manifests retain source attribution,
+immutable revision, tokenizer and evaluation hashes, and token-window hashes via
+shard files. FineWeb uses ODC-BY; source documents retain their respective rights.
+
+Results include full-vocabulary concept ranks at each fixed layer, matched logit
+lens readouts, coverage, target-prefix capability where labels exist, and paired
+task-stratified bootstrap intervals. Causal endpoints use first continuation tokens
+of upstream answer labels and must not be interpreted as full-answer accuracy.
+Calibration shards resume atomically; checkpoints and raw results belong in
+`artifacts/`, not the Git history. No minimum empirical score is asserted by tests.

@@ -1,4 +1,6 @@
-//! Reproducible fitting over frozen token windows and matched lens measurements.
+#[path = "experiment/causal.rs"]
+mod causal;
+// Reproducible fitting over frozen token windows and matched lens measurements.
 use candle_core::{DType, Device, Tensor};
 use jacobian_lens::{
     DifferentiableTransformer, FitCheckpoint, FittingConfig, JacobianLensRegistry, LensError,
@@ -52,6 +54,11 @@ fn main() -> Result<()> {
     let model_id = jacobian_lens::provenance::qwen_identity(&a[1])?;
     let tokenizer = Tokenizer::from_file(Path::new(&a[1]).join("tokenizer.json")).map_err(err)?;
     match a[0].as_str() {
+        "causal" => {
+            let lens = JacobianLensRegistry::load(&a[2], &device, DType::F32)?;
+            let result = causal::run(&model, &lens, &tokenizer, &device)?;
+            write(&a[3], &result)?;
+        }
         "merge" => {
             let mut shards = Vec::new();
             for i in 0..110 {
