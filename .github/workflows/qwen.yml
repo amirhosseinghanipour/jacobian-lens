@@ -1,0 +1,23 @@
+name: Qwen research parity
+on:
+  workflow_dispatch:
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      JLENS_QWEN_DIR: models/Qwen2.5-0.5B-Instruct
+      JLENS_QWEN_ORACLE: /tmp/qwen-oracle.safetensors
+      RAYON_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python scripts/download_qwen.py --revision 7ae557604adf67be50417f59c2c2f167def9a775
+      - run: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install transformers==4.49.0 safetensors==0.5.3
+      - run: python scripts/qwen_oracle.py "$JLENS_QWEN_DIR" "$JLENS_QWEN_ORACLE"
+      - run: cargo test --release --test qwen -- --ignored --nocapture

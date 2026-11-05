@@ -70,41 +70,21 @@ pub fn jacobian_for_prompt(
             sources.insert(layer, h.clone());
         }
     }
-    let d = model.hidden_size();
+    let dimensions: Vec<_> = (0..model.hidden_size()).collect();
     let mut jacobians = BTreeMap::new();
     for (layer, state) in sources {
-        let mut rows = Vec::new();
-        for start in (0..d).step_by(config.dim_batch) {
-            let count = (d - start).min(config.dim_batch);
-            let source = Var::from_tensor(&state.repeat((count, 1, 1))?)?;
-            let mut output = source.as_tensor().clone();
-            for l in layer + 1..=config.target_layer {
-                output = model.forward_block(l, &output)?;
-            }
-            // Each batch member carries one output dimension at all valid targets.
-            let mut cotangent = vec![0f32; count * seq * d];
-            for b in 0..count {
-                for p in config.skip_first..seq - 1 {
-                    cotangent[(b * seq + p) * d + start + b] = 1.;
-                }
-            }
-            let cotangent = Tensor::from_vec(cotangent, (count, seq, d), state.device())?
-                .to_dtype(output.dtype())?;
-            let objective = output.mul(&cotangent)?.sum_all()?;
-            let gradients = objective.backward()?;
-            let grad = gradients.get(source.as_tensor()).ok_or_else(|| {
-                LensError::Invalid(
-                    "suffix has no gradient to source; check inference-only ops".into(),
-                )
-            })?;
-            rows.push(
-                grad.narrow(1, config.skip_first, valid)?
-                    .to_dtype(DType::F32)?
-                    .mean(1)?
-                    .detach(),
-            );
-        }
-        jacobians.insert(layer, Tensor::cat(&rows, 0)?);
+        jacobians.insert(
+            layer,
+            jacobian_rows(
+                model,
+                &state,
+                layer,
+                config.target_layer,
+                config.skip_first,
+                &dimensions,
+                config.dim_batch,
+            )?,
+        );
     }
     Ok(PromptJacobian {
         jacobians,
@@ -147,4 +127,60 @@ pub fn fit(
         .map(|(l, j)| Ok((l, (j / n as f64)?)))
         .collect::<Result<_>>()?;
     Ok((JacobianLensRegistry::new(mean)?, n))
+}
+
+/// Selected Jacobian rows for independent parity checks or directional probes.
+/// `state` must be a single prompt's source block output, before final norm.
+pub fn jacobian_rows(
+    model: &impl DifferentiableTransformer,
+    state: &Tensor,
+    source_layer: usize,
+    target_layer: usize,
+    skip_first: usize,
+    dimensions: &[usize],
+    dim_batch: usize,
+) -> Result<Tensor> {
+    let (batch, seq, d) = state.dims3()?;
+    if batch != 1
+        || d != model.hidden_size()
+        || source_layer >= target_layer
+        || target_layer >= model.layer_count()
+        || seq.saturating_sub(1) <= skip_first
+        || dim_batch == 0
+        || dimensions.is_empty()
+        || dimensions.iter().any(|&i| i >= d)
+    {
+        return Err(LensError::Invalid(
+            "invalid Jacobian probe configuration".into(),
+        ));
+    }
+    let valid = seq - 1 - skip_first;
+    let mut rows = Vec::new();
+    for dims in dimensions.chunks(dim_batch) {
+        let count = dims.len();
+        let source = Var::from_tensor(&state.detach().repeat((count, 1, 1))?)?;
+        let mut output = source.as_tensor().clone();
+        for layer in source_layer + 1..=target_layer {
+            output = model.forward_block(layer, &output)?;
+        }
+        let mut cotangent = vec![0f32; count * seq * d];
+        for (b, &dim) in dims.iter().enumerate() {
+            for p in skip_first..seq - 1 {
+                cotangent[(b * seq + p) * d + dim] = 1.;
+            }
+        }
+        let cotangent = Tensor::from_vec(cotangent, (count, seq, d), state.device())?
+            .to_dtype(output.dtype())?;
+        let gradients = output.mul(&cotangent)?.sum_all()?.backward()?;
+        let grad = gradients
+            .get(source.as_tensor())
+            .ok_or_else(|| LensError::Invalid("missing source gradient".into()))?;
+        rows.push(
+            grad.narrow(1, skip_first, valid)?
+                .to_dtype(DType::F32)?
+                .mean(1)?
+                .detach(),
+        );
+    }
+    Ok(Tensor::cat(&rows, 0)?)
 }
