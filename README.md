@@ -197,3 +197,9 @@ task-stratified bootstrap intervals. Causal endpoints use first continuation tok
 of upstream answer labels and must not be interpreted as full-answer accuracy.
 Calibration shards resume atomically; checkpoints and raw results belong in
 `artifacts/`, not the Git history. No minimum empirical score is asserted by tests.
+
+The `merge-pilot` subcommand merges the first ten completed shards into the
+100-prompt lens. `eval-development MODEL LENS_DIR OUTPUT SPLITS` evaluates only
+the development split, including the recorded prior-smoke exclusions. The
+published pilot measurements in `experiments/qwen-calibration/development/`
+are development results; final test measurements require the completed run.

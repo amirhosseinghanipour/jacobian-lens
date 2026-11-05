@@ -1,0 +1,56 @@
+{
+  "prompts_per_sample": 100,
+  "comparison": "disjoint main and replication calibration samples",
+  "layers": {
+    "jacobians.10": {
+      "full_jacobian": {
+        "cosine": 0.9929206654666816,
+        "relative_frobenius_difference": 0.1197208752793458
+      },
+      "jacobian_minus_identity": {
+        "cosine": 0.9947254041006931,
+        "relative_frobenius_difference": 0.1030509817638501
+      }
+    },
+    "jacobians.14": {
+      "full_jacobian": {
+        "cosine": 0.9960867765200109,
+        "relative_frobenius_difference": 0.08953093268241365
+      },
+      "jacobian_minus_identity": {
+        "cosine": 0.9962329039735773,
+        "relative_frobenius_difference": 0.08746766500012239
+      }
+    },
+    "jacobians.18": {
+      "full_jacobian": {
+        "cosine": 0.9985318079170998,
+        "relative_frobenius_difference": 0.05477509037377771
+      },
+      "jacobian_minus_identity": {
+        "cosine": 0.997390512584834,
+        "relative_frobenius_difference": 0.07308163089126354
+      }
+    },
+    "jacobians.22": {
+      "full_jacobian": {
+        "cosine": 0.9998223209133208,
+        "relative_frobenius_difference": 0.01900277890907943
+      },
+      "jacobian_minus_identity": {
+        "cosine": 0.9991396459025891,
+        "relative_frobenius_difference": 0.042055636436197315
+      }
+    },
+    "jacobians.6": {
+      "full_jacobian": {
+        "cosine": 0.993440489228098,
+        "relative_frobenius_difference": 0.1149922539183176
+      },
+      "jacobian_minus_identity": {
+        "cosine": 0.9960434822051677,
+        "relative_frobenius_difference": 0.08911374877403298
+      }
+    }
+  }
+}

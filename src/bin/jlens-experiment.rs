@@ -77,9 +77,9 @@ fn main() -> Result<()> {
             let result = causal::run(&model, &lens, &tokenizer, &device)?;
             write(&a[3], &result)?;
         }
-        "merge" => {
+        "merge" | "merge-pilot" => {
             let mut shards = Vec::new();
-            for i in 0..110 {
+            for i in 0..if a[0] == "merge-pilot" { 10 } else { 110 } {
                 let path = Path::new(&a[2]).join(format!("shard-{i:03}.safetensors"));
                 let bytes = std::fs::read(&path)?;
                 let (_, header) = safetensors::SafeTensors::read_metadata(&bytes)?;
@@ -100,6 +100,9 @@ fn main() -> Result<()> {
                 ("main-1000", 0..100),
                 ("replicate-100", 100..110),
             ] {
+                if a[0] == "merge-pilot" && name != "main-100" {
+                    continue;
+                }
                 let count = range.len() * 10;
                 let layers = [6, 10, 14, 18, 22]
                     .into_iter()
@@ -179,7 +182,15 @@ fn main() -> Result<()> {
                 ]),
             )?;
         }
-        "eval" => {
+        "eval" | "eval-development" => {
+            let splits: Option<BTreeMap<String, BTreeMap<String, String>>> =
+                if a[0] == "eval-development" {
+                    Some(read(a.get(4).ok_or_else(|| {
+                        err("development evaluation requires splits.json")
+                    })?)?)
+                } else {
+                    None
+                };
             let lens_dir = Path::new(&a[2]);
             let mut lenses = BTreeMap::new();
             for name in ["main-100", "main-1000", "replicate-100"] {
@@ -209,6 +220,17 @@ fn main() -> Result<()> {
                     _ => ReadoutPosition::BeforeTarget,
                 };
                 for item in dataset.items {
+                    if let Some(splits) = &splits {
+                        let split = splits
+                            .get(&format!("lens-eval-{task}"))
+                            .and_then(|items| items.get(&item.name))
+                            .ok_or_else(|| err("missing split assignment"))?;
+                        if split != "development"
+                            && !(task == "multihop" && item.name == "mars-color")
+                        {
+                            continue;
+                        }
+                    }
                     let ids = encode_readout(&tokenizer, &item, position)?;
                     let p = ids.len() - 1;
                     let states =

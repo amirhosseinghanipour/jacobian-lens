@@ -1,0 +1,25 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "calibration_prompts": 100,
+  "replication_prompts": 100,
+  "layers": [
+    6,
+    10,
+    14,
+    18,
+    22
+  ],
+  "evaluation_device": "cpu",
+  "fitting_device": "RTX 3060 CUDA",
+  "precision": "float32",
+  "split": "development only",
+  "artifact_sha256": {
+    "manifest.json": "0d80d11d211e38d4787fe97260072fb54f69c79226a40a1dd043625f7d2b087e",
+    "splits.json": "a29be5d9d8ddcf0d8dec0972b7f674d883a930be03ed18413ed37501a76573d8",
+    "main-100.safetensors": "871d2ec66fd15e88f7c7b3899597d2d045336ddd5b405d2daa1e3bc2aaf2dae2",
+    "protocol.json": "1265b155581c5d2db22b6b4b8369041bc8d63c60cda29810cda4bdb4cc9dccba",
+    "protocol-amendments.json": "b47d535fd371690f1a9c7ae09edd9c5532f14ea3867950ecb1c417d6086e40fc"
+  },
+  "scope": "Pilot measurements; no final test outcomes or alignment-safety claim."
+}
