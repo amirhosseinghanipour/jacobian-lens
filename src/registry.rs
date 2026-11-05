@@ -155,7 +155,7 @@ fn load_view(view: &TensorView<'_>, device: &Device) -> Result<Tensor> {
 }
 
 impl JacobianLensRegistry {
-    /// Export J[out,in] in the canonical Python convention.
+    /// Export `J[out,in]` in the canonical Python convention.
     pub fn jacobian(&self, layer: usize) -> Result<Tensor> {
         Ok(self
             .transposes
