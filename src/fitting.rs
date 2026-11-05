@@ -46,7 +46,7 @@ pub struct PromptJacobian {
 /// retained suffix graph. Their gradients are exactly d(output)/d(block output).
 /// Independent batch members carry output cotangents; parameters stay frozen.
 pub fn jacobian_for_prompt(
-    model: &impl DifferentiableTransformer,
+    model: &(impl DifferentiableTransformer + ?Sized),
     ids: &Tensor,
     config: &FittingConfig,
 ) -> Result<PromptJacobian> {
@@ -123,13 +123,76 @@ pub fn jacobian_for_prompt(
         valid_positions: valid,
     })
 }
+/// Runtime-independent access to the per-prompt Jacobian estimator. Foreign
+/// runtimes return ordinary Candle tensors; corpus aggregation and checkpoints
+/// stay in Rust. Native differentiable adapters implement this automatically.
+pub trait JacobianEstimator: Send + Sync {
+    /// (residual width, number of block outputs).
+    fn fitting_dimensions(&self) -> (usize, usize);
+    fn estimate_prompt(&self, ids: &Tensor, config: &FittingConfig) -> Result<PromptJacobian>;
+}
+impl<T: DifferentiableTransformer + ?Sized> JacobianEstimator for T {
+    fn fitting_dimensions(&self) -> (usize, usize) {
+        (self.hidden_size(), self.layer_count())
+    }
+    fn estimate_prompt(&self, ids: &Tensor, config: &FittingConfig) -> Result<PromptJacobian> {
+        jacobian_for_prompt(self, ids, config)
+    }
+}
+/// Validate a runtime's estimate before it enters corpus sums or checkpoints.
+pub fn estimate_prompt(
+    model: &(impl JacobianEstimator + ?Sized),
+    ids: &Tensor,
+    config: &FittingConfig,
+) -> Result<PromptJacobian> {
+    let (width, layers) = model.fitting_dimensions();
+    config.validate(layers)?;
+    let (batch, length) = ids.dims2()?;
+    let length = length.min(config.max_seq_len);
+    if width == 0 || batch != 1 || length.saturating_sub(1) <= config.skip_first {
+        return Err(LensError::Invalid(
+            "invalid estimator input dimensions".into(),
+        ));
+    }
+    let result = model.estimate_prompt(ids, config)?;
+    if result.seq_len != length
+        || result.valid_positions != length - 1 - config.skip_first
+        || !result
+            .jacobians
+            .keys()
+            .copied()
+            .eq(config.source_layers.iter().copied())
+    {
+        return Err(LensError::Backend(
+            "Jacobian estimator returned inconsistent layers/positions".into(),
+        ));
+    }
+    for j in result.jacobians.values() {
+        if j.dims() != [width, width] || j.dtype() != DType::F32 || !j.is_contiguous() {
+            return Err(LensError::Backend(
+                "Jacobian estimator returned invalid shape/dtype/layout".into(),
+            ));
+        }
+        if j.flatten_all()?
+            .to_vec1::<f32>()?
+            .iter()
+            .any(|v| !v.is_finite())
+        {
+            return Err(LensError::Backend(
+                "Jacobian estimator returned nonfinite values".into(),
+            ));
+        }
+    }
+    Ok(result)
+}
+
 /// Corpus mean, weighting successful prompts equally. Only short prompts skip.
 pub fn fit(
-    model: &impl DifferentiableTransformer,
+    model: &(impl JacobianEstimator + ?Sized),
     prompts: &[Tensor],
     config: &FittingConfig,
 ) -> Result<(JacobianLensRegistry, usize)> {
-    config.validate(model.layer_count())?;
+    config.validate(model.fitting_dimensions().1)?;
     let mut sums: BTreeMap<usize, Tensor> = BTreeMap::new();
     let mut n = 0;
     for ids in prompts {
@@ -140,7 +203,7 @@ pub fn fit(
         if seq.min(config.max_seq_len).saturating_sub(1) <= config.skip_first {
             continue;
         }
-        let result = jacobian_for_prompt(model, ids, config)?;
+        let result = estimate_prompt(model, ids, config)?;
         for (l, j) in result.jacobians {
             let sum = match sums.remove(&l) {
                 Some(prev) => (prev + j)?,
@@ -163,7 +226,7 @@ pub fn fit(
 /// Selected Jacobian rows for independent parity checks or directional probes.
 /// `state` must be a single prompt's source block output, before final norm.
 pub fn jacobian_rows(
-    model: &impl DifferentiableTransformer,
+    model: &(impl DifferentiableTransformer + ?Sized),
     state: &Tensor,
     source_layer: usize,
     target_layer: usize,

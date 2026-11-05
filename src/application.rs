@@ -1,7 +1,5 @@
 //! Reference-style lens application and logit-lens baseline on captured states.
-use crate::{
-    DifferentiableTransformer, JacobianLensRegistry, LensError, Result, Unembed, qwen2::Qwen2,
-};
+use crate::{JacobianLensRegistry, LensError, LensModel, Result};
 use candle_core::{DType, Tensor};
 use std::collections::BTreeMap;
 #[derive(Debug, Clone)]
@@ -32,7 +30,7 @@ impl JacobianLensRegistry {
     /// Batch-one application, with outputs [selected_positions, vocabulary].
     pub fn apply(
         &self,
-        model: &Qwen2,
+        model: &dyn LensModel,
         ids: &Tensor,
         options: &ApplyOptions,
     ) -> Result<AppliedLens> {
@@ -47,7 +45,7 @@ impl JacobianLensRegistry {
             .layers
             .clone()
             .unwrap_or_else(|| self.layers().collect());
-        if layers.is_empty() || layers.iter().any(|&l| l >= model.layer_count()) {
+        if layers.is_empty() || layers.iter().any(|&l| l >= model.dimensions().layer_count) {
             return Err(LensError::Invalid("apply layer outside model".into()));
         }
         if options.use_jacobian {
@@ -74,20 +72,25 @@ impl JacobianLensRegistry {
             return Err(LensError::Invalid("empty position selection".into()));
         }
         let input_ids = ids.narrow(1, 0, seq)?;
-        let states = model.residuals(&input_ids)?;
+        let trace = model.capture(&input_ids, &layers, &[])?;
         let indices = Tensor::new(
             positions.iter().map(|&p| p as u32).collect::<Vec<_>>(),
             ids.device(),
         )?;
         let select = |h: &Tensor| -> Result<Tensor> {
             Ok(h.squeeze(0)?
-                .index_select(&indices, 0)?
+                .index_select(&indices.to_device(h.device())?, 0)?
                 .to_dtype(DType::F32)?
                 .contiguous()?)
         };
         let mut lens_logits = BTreeMap::new();
         for layer in layers {
-            let h = select(&states[layer])?;
+            let h = select(
+                trace
+                    .residuals
+                    .get(&layer)
+                    .ok_or(LensError::MissingLayer(layer))?,
+            )?;
             let logits = if options.use_jacobian {
                 self.decode_jspace(layer, &h, model)?
             } else {
@@ -96,7 +99,7 @@ impl JacobianLensRegistry {
             lens_logits.insert(layer, logits.to_dtype(DType::F32)?);
         }
         let model_logits = model
-            .logits(&select(states.last().unwrap())?)?
+            .logits(&select(&trace.final_residual)?)?
             .to_dtype(DType::F32)?;
         Ok(AppliedLens {
             lens_logits,

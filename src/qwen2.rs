@@ -319,3 +319,54 @@ impl TransformerForward for Qwen2 {
         self.logits(h)
     }
 }
+
+impl crate::LensModel for Qwen2 {
+    fn dimensions(&self) -> crate::ModelDimensions {
+        crate::ModelDimensions {
+            hidden_size: self.config.hidden_size,
+            layer_count: self.config.num_hidden_layers,
+            vocab_size: self.config.vocab_size,
+        }
+    }
+    fn capture(
+        &self,
+        ids: &Tensor,
+        layers: &[usize],
+        replacements: &[crate::ResidualReplacement],
+    ) -> Result<crate::ModelTrace> {
+        crate::model::validate_capture(self.dimensions(), layers, replacements)?;
+        let mut h = self.embed_tokens(ids)?;
+        let mut residuals = std::collections::BTreeMap::new();
+        for layer in 0..self.layer_count() {
+            h = self.forward_block(layer, &h)?;
+            if let Some(edit) = replacements.iter().find(|e| e.layer == layer) {
+                if edit.hidden.dims() != h.dims()
+                    || edit.hidden.dtype() != h.dtype()
+                    || !edit.hidden.device().same_device(h.device())
+                {
+                    return Err(LensError::Invalid(
+                        "replacement shape/dtype/device mismatch".into(),
+                    ));
+                }
+                h = edit.hidden.clone();
+            }
+            if layers.contains(&layer) {
+                residuals.insert(layer, h.clone());
+            }
+        }
+        Ok(crate::ModelTrace {
+            residuals,
+            final_residual: h,
+        })
+    }
+    fn unembedding_rows(&self, tokens: &[u32]) -> Result<Tensor> {
+        if tokens.is_empty() || tokens.iter().any(|&t| t as usize >= self.config.vocab_size) {
+            return Err(LensError::Invalid(
+                "invalid unembedding token selection".into(),
+            ));
+        }
+        Ok(self
+            .lm_head()
+            .index_select(&Tensor::new(tokens, self.lm_head().device())?, 0)?)
+    }
+}

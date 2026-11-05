@@ -1,6 +1,6 @@
 //! Released lens-quality tasks: intermediate-concept recall across layers.
 //! Target answers locate readout positions and are never scored as concepts.
-use crate::{JacobianLensRegistry, LensError, Result, qwen2::Qwen2};
+use crate::{JacobianLensRegistry, LensError, LensModel, Result};
 use candle_core::{Device, Tensor};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -116,7 +116,7 @@ pub fn concept_tokens(
 }
 /// Full-vocabulary ranks, deterministic ties by ascending token ID.
 pub fn evaluate_item(
-    model: &Qwen2,
+    model: &dyn LensModel,
     registry: &JacobianLensRegistry,
     tokenizer: &Tokenizer,
     item: &EvaluationItem,
@@ -130,7 +130,11 @@ pub fn evaluate_item(
         ));
     }
     let ids = encode_readout(tokenizer, item, position)?;
-    let states = model.residuals(&Tensor::new(ids.as_slice(), device)?.unsqueeze(0)?)?;
+    let trace = model.capture(
+        &Tensor::new(ids.as_slice(), device)?.unsqueeze(0)?,
+        &registry.layers().collect::<Vec<_>>(),
+        &[],
+    )?;
     let mut concepts = item
         .intermediates
         .iter()
@@ -144,8 +148,9 @@ pub fn evaluate_item(
         .collect::<Result<Vec<_>>>()?;
     let p = ids.len() - 1;
     for layer in registry.layers() {
-        let state = states
-            .get(layer)
+        let state = trace
+            .residuals
+            .get(&layer)
             .ok_or(LensError::MissingLayer(layer))?
             .narrow(1, p, 1)?
             .contiguous()?;

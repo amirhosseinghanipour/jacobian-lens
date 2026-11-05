@@ -1,7 +1,5 @@
 //! Inspectable layer/position slices with full-vocabulary tracked-token ranks.
-use crate::{
-    DifferentiableTransformer, JacobianLensRegistry, LensError, Result, Unembed, qwen2::Qwen2,
-};
+use crate::{JacobianLensRegistry, LensError, LensModel, Result};
 use candle_core::{DType, Device, Tensor};
 use jlens_research::slice::{Cell, Slice, SliceConfig};
 use serde::{Deserialize, Serialize};
@@ -39,7 +37,7 @@ fn row_ranks(row: &[f32]) -> Result<Vec<usize>> {
 /// selects displayed tokens; the second records ranks for their global union.
 /// Final row is always the actual model output, never a fitted final-layer lens.
 pub fn compute_slice(
-    model: &Qwen2,
+    model: &dyn LensModel,
     registry: &JacobianLensRegistry,
     tokenizer: &Tokenizer,
     ids: &Tensor,
@@ -54,7 +52,7 @@ pub fn compute_slice(
     {
         return Err(LensError::Invalid("invalid slice shape/settings".into()));
     }
-    let vocab = model.config().vocab_size;
+    let vocab = model.dimensions().validate()?.vocab_size;
     if config.top_n > vocab || config.pinned.iter().any(|&id| id >= vocab) {
         return Err(LensError::Invalid("invalid slice top_n/pinned id".into()));
     }
@@ -64,8 +62,8 @@ pub fn compute_slice(
         return Err(LensError::Invalid("insufficient display tokens".into()));
     }
     let fitted: Vec<_> = registry.layers().collect();
-    let final_layer = model.layer_count() - 1;
-    if fitted.is_empty() || fitted.iter().any(|&l| l >= model.layer_count()) {
+    let final_layer = model.dimensions().layer_count - 1;
+    if fitted.is_empty() || fitted.iter().any(|&l| l >= model.dimensions().layer_count) {
         return Err(LensError::Invalid("invalid slice layers".into()));
     }
     let mut layers: Vec<_> = fitted
@@ -79,11 +77,16 @@ pub fn compute_slice(
         }
     }
     layers.sort_unstable();
-    let states = model.residuals(ids)?;
+    let trace = model.capture(ids, &layers, &[])?;
     let offset = seq.saturating_sub(config.last_n.unwrap_or(seq));
     let n = seq - offset;
     let logits = |layer: usize| -> Result<Vec<Vec<f32>>> {
-        let h = states[layer].narrow(1, offset, n)?.contiguous()?;
+        let h = trace
+            .residuals
+            .get(&layer)
+            .ok_or(LensError::MissingLayer(layer))?
+            .narrow(1, offset, n)?
+            .contiguous()?;
         let logits = if layer == final_layer {
             model.logits(&h)?
         } else {

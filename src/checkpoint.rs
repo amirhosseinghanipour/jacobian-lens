@@ -1,7 +1,6 @@
 //! Atomic, resumable corpus fitting. Model and corpus identities are explicit.
 use crate::{
-    DifferentiableTransformer, FittingConfig, JacobianLensRegistry, LensError, Result,
-    jacobian_for_prompt,
+    FittingConfig, JacobianEstimator, JacobianLensRegistry, LensError, Result, estimate_prompt,
 };
 use candle_core::{DType, Device, Tensor};
 use serde::{Deserialize, Serialize};
@@ -66,13 +65,15 @@ impl FitCheckpoint {
     /// Failed model evaluations never advance the cursor. Short prompts do.
     pub fn run_until(
         &mut self,
-        model: &impl DifferentiableTransformer,
+        model: &(impl JacobianEstimator + ?Sized),
         prompts: &[Tensor],
         end: usize,
         checkpoint: Option<&Path>,
     ) -> Result<()> {
-        self.progress.config.validate(model.layer_count())?;
-        if model.hidden_size() != self.progress.width
+        self.progress
+            .config
+            .validate(model.fitting_dimensions().1)?;
+        if model.fitting_dimensions().0 != self.progress.width
             || end > prompts.len()
             || end < self.progress.next_index
         {
@@ -93,7 +94,7 @@ impl FitCheckpoint {
             {
                 self.progress.skipped += 1;
             } else {
-                let estimate = jacobian_for_prompt(model, ids, &self.progress.config)?;
+                let estimate = estimate_prompt(model, ids, &self.progress.config)?;
                 let mut next = BTreeMap::new();
                 for (layer, j) in estimate.jacobians {
                     let sum = match self.sums.get(&layer) {

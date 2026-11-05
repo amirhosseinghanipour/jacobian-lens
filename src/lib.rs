@@ -1,10 +1,14 @@
-//! Inference-only Jacobian lens: `h @ J.T -> model final norm -> lm_head`.
+//! Model-independent Jacobian lens: `h @ J.T -> model final norm -> lm_head`.
 //! Layer indices refer to residual block **outputs**, before the final norm.
 #![deny(unsafe_op_in_unsafe_fn)]
 #![doc = include_str!("../README.md")]
 
 mod application;
+mod model;
+pub use model::*;
 mod checkpoint;
+#[cfg(feature = "hf")]
+pub mod hf;
 pub use application::*;
 mod decode;
 pub use checkpoint::*;
@@ -43,6 +47,8 @@ pub enum LensError {
     NonContiguous(&'static str),
     #[error("invalid lens configuration: {0}")]
     Invalid(String),
+    #[error("model backend: {0}")]
+    Backend(String),
     #[error("tokenizer: {0}")]
     Tokenizer(String),
 }

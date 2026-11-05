@@ -10,6 +10,8 @@ description = "Candle Jacobian lens decoding and explicit residual-stream tracki
 
 [features]
 default = []
+# Optional persistent Python/Transformers runtime; the native crate needs no Python.
+hf = []
 cuda = ["candle-core/cuda", "candle-nn/cuda"]
 metal = ["candle-core/metal", "candle-nn/metal"]
 

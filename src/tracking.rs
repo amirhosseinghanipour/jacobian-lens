@@ -122,3 +122,33 @@ pub trait TransformerForward: Send {
         self.unembed(&hidden)
     }
 }
+
+/// Track selected residuals through any backend, including models whose blocks
+/// require auxiliary state. The runtime retains only requested block outputs.
+pub fn forward_tracked(
+    model: &dyn crate::LensModel,
+    ids: &Tensor,
+    mut tracker: Option<&mut LensTracker<'_>>,
+    replacements: &[crate::ResidualReplacement],
+) -> Result<Tensor> {
+    let layers = if let Some(t) = tracker.as_deref_mut() {
+        t.validate_layer_count(model.dimensions().layer_count)?;
+        t.clear();
+        t.layers.iter().copied().collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let trace = model.capture(ids, &layers, replacements)?;
+    if let Some(t) = tracker {
+        for layer in layers {
+            t.observe(
+                layer,
+                trace
+                    .residuals
+                    .get(&layer)
+                    .ok_or(LensError::MissingLayer(layer))?,
+            )?;
+        }
+    }
+    model.logits(&trace.final_residual)
+}

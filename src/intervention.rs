@@ -10,6 +10,23 @@ pub struct LensFrame {
     size: usize,
 }
 impl LensFrame {
+    /// Construct a J-space frame using any runtime's selected unembedding rows.
+    pub fn from_model(
+        registry: &JacobianLensRegistry,
+        layer: usize,
+        model: &dyn crate::LensModel,
+        tokens: &[u32],
+        relative_tolerance: f64,
+    ) -> Result<Self> {
+        let j = registry.jacobian(layer)?;
+        let rows = model
+            .unembedding_rows(tokens)?
+            .to_device(j.device())?
+            .to_dtype(j.dtype())?;
+        // Row token directions are W_U[token] J, not W_U[token] J.T.
+        Self::new(rows.matmul(&j)?, relative_tolerance)
+    }
+
     /// Token vectors form columns V; stores V.T and (V†).T for row activations.
     pub fn from_tokens(
         registry: &JacobianLensRegistry,

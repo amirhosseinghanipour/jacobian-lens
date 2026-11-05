@@ -1,0 +1,31 @@
+name: Runtime backend parity
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/requirements-hf.txt
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -r scripts/requirements-hf.txt
+      - run: python scripts/backend_oracles.py artifacts/backend-tests/models
+      - run: cargo test --locked --features hf --all-targets
+      - run: cargo test --locked --features hf --test hf architectures_preserve -- --ignored --nocapture
+        env:
+          JLENS_PYTHON: python
+          JLENS_HF_TEST_DIR: artifacts/backend-tests/models
+          PYTHONPATH: scripts
+      - run: cargo clippy --locked --features hf --all-targets -- -D warnings
+      - run: cargo doc --locked --features hf --no-deps
+        env:
+          RUSTDOCFLAGS: '-D warnings'

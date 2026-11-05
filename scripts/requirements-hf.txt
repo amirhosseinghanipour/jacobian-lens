@@ -1,0 +1,5 @@
+# CPU or CUDA PyTorch should be installed for the intended runtime device.
+torch>=2.6
+transformers==5.17.0
+safetensors>=0.5
+jlens @ git+https://github.com/anthropics/jacobian-lens.git@581d398613e5602a5af361e1c34d3a92ea82ba8e

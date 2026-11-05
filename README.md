@@ -1,8 +1,10 @@
 # Jacobian Lens for Rust
 
 Rust implementations of Jacobian lens fitting, vocabulary decoding, and J-space
-interventions, built on Candle. Includes a differentiable Qwen2/Qwen2.5 adapter,
-an independent f64 CPU reference, and the public Anthropic evaluation prompts.
+interventions with runtime-independent model interfaces and Candle tensor storage.
+Includes an optional Hugging Face runtime bridge, a native differentiable
+Qwen2/Qwen2.5 backend, an independent f64 CPU reference, and the public Anthropic
+evaluation prompts.
 
 Based on [Verbalizable Representations Form a Global Workspace in Language Models](https://transformer-circuits.pub/2026/workspace/index.html)
 and the [Python reference](https://github.com/anthropics/jacobian-lens).
@@ -81,7 +83,9 @@ The library accepts explicit synonym maps for arithmetic and operation names.
   baseline. Tensors are immutable and shareable across workers.
 - `MappedLens`: zero-copy safetensors views borrowing an owned file mapping.
 - `LensTracker`: selected layer/position top-K summaries, bounded across forwards.
-- `TransformerForward`: explicit block-output interception for model adapters.
+- `LensModel`, `JacobianEstimator`, `ResearchModel`: runtime-independent model contracts.
+- `TransformerForward`: explicit block-output interception for native adapters.
+- `forward_tracked`, `intervention_logits`: whole-model tracking and causal reruns.
 - `DifferentiableTransformer`, `jacobian_for_prompt`, `jacobian_rows`, `fit`:
   deterministic full-sequence Jacobian estimation with frozen model weights.
 - `qwen2::Qwen2`: dense Qwen2/Qwen2.5 loading, residual capture, differentiable
@@ -113,6 +117,95 @@ let lens = JacobianLensRegistry::load("lens.safetensors", &device, DType::F32)?;
 Share registries/readouts with `Arc`; use request-local trackers. Run synchronous
 tensor work on bounded blocking workers when integrating with Tokio. CUDA and
 Metal support are exposed through the corresponding Cargo features.
+
+## Models and runtimes
+
+The public research APIs use `LensModel` and `JacobianEstimator`, not a concrete
+model architecture. `ResearchModel` combines them for dynamic dispatch. `apply`,
+evaluation, visualization, tracking, fitting, checkpoints, and J-space
+interventions accept these interfaces. Readout-only runtimes need not implement
+fitting. Native Candle adapters implementing `DifferentiableTransformer` receive
+the estimator implementation automatically.
+
+`LensModel::capture` runs a complete forward pass with selected block-output
+captures and optional replacements. The runtime owns positional inputs, masks,
+recurrent state, expert routing, and auxiliary context. Causal edits therefore
+work without assuming that a transformer suffix can run independently. Final
+normalization, head bias, and logit softcapping belong to the model's `Unembed`
+implementation. `LensFrame::from_model` fetches only selected unembedding rows.
+
+The optional `hf` feature starts a persistent Python worker using the installed
+Transformers runtime and Anthropic's Python fitting implementation. Models are
+loaded by Transformers auto classes; the Rust crate has no architecture allowlist
+for this backend. The worker discovers decoder layout through embedding endpoints
+and module structure. Explicit `HfLayout` overrides handle ambiguous layouts.
+For other PyTorch runtimes, `HfOptions::factory` accepts `module:function`; the
+function receives the options dictionary and returns a Python `LensModel`, plus
+`unembedding_rows(ids)` for constructing J-space frames. Other runtimes, including
+Burn integrations, can implement the Rust interfaces directly and exchange
+ordinary Candle tensors at the boundary.
+
+```sh
+pip install -r scripts/requirements-hf.txt
+JLENS_BACKEND=hf JLENS_DEVICE=cuda JLENS_PYTHON=python3 \
+  cargo run --release --features hf --bin jlens -- fit \
+  models/MODEL calibration.json lens.safetensors 6,10,14 4 128
+```
+
+Use the same `JLENS_BACKEND=hf` setting with the `eval` command. The CLI takes
+local model/tokenizer directories; the library also accepts Hub identifiers and
+revisions. `JLENS_REQUEST_TIMEOUT` sets the per-request timeout in seconds
+(default 3600). The Python worker can use CUDA without compiling Candle's `cuda`
+feature; Rust-side bridge tensors default to CPU. `HfModel::launch` also accepts
+an explicit Rust output device. The native Qwen CLI remains the default.
+
+```rust,ignore
+use std::time::Duration;
+use candle_core::Device;
+use jacobian_lens::{hf::{HfModel, HfOptions}, LensModel, estimate_prompt};
+
+let mut options = HfOptions::local("models/MODEL");
+options.device = "cuda".into();
+let model = HfModel::launch("python3", &options, &Device::Cpu, Duration::from_secs(3600))?;
+let ids = model.encode("A calibration passage long enough for the selected mask", 128)?;
+let trace = model.capture(&ids, &[6, 10], &[])?;
+// let estimate = estimate_prompt(&model, &ids, &fitting_config)?;
+// let readout = lens.apply(&model, &ids, &apply_options)?;
+# Ok::<(), jacobian_lens::LensError>(())
+```
+
+Tensor exchange uses private safetensors files, not pickle; it copies data across
+the runtime boundary. The model stays resident, and its autograd graph stays in
+Python. Calls are blocking and serialized per worker, with request IDs, timeouts,
+and worker cleanup. Use bounded blocking queues with async inference. Remote
+model code is disabled unless explicitly enabled. Input IDs are preserved exactly
+during fitting; `force_bos` defaults to false and is an explicit tokenizer policy.
+A supplied separate tokenizer must match the checkpoint's token IDs.
+
+Compatibility is a runtime contract, not a claim that every open-weight artifact
+has been validated. A model needs accessible fixed-width residual boundaries,
+the correct vocabulary readout, deterministic fresh-state execution, and
+activation gradients for fitting. Quantized or inference-only kernels may support
+readout without fitting. The built-in HF bridge handles text decoder inputs;
+image/audio inputs, encoder context, unusual readouts, and nonstandard block
+outputs require a custom adapter. Models without this residual/readout structure
+need a different scientific definition of the lens.
+
+The backend research suite uses small randomly initialized Llama, Qwen2, Qwen3,
+GPT-2, GPT-NeoX, Gemma2, Mixtral, and Qwen3.5 text models, plus an unregistered
+context-dependent PyTorch decoder. It compares block outputs, model logits,
+full Jacobians, independent finite differences, and pseudoinverse concept swaps;
+it also exercises checkpoint resume and simultaneous callers. These are
+architecture compatibility checks, not pretrained-model quality measurements.
+Qwen3.5 uses reference PyTorch kernels in these CPU tests; fused CUDA kernels need
+separate validation.
+
+```sh
+python scripts/backend_oracles.py artifacts/backend-tests/models
+PYTHONPATH=scripts JLENS_PYTHON=python3 \
+  JLENS_HF_TEST_DIR=artifacts/backend-tests/models \
+  cargo test --release --features hf --test hf architectures_preserve -- --ignored --nocapture
+```
 
 ## Weight format and memory
 
