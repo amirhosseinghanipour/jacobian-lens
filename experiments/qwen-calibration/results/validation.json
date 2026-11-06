@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "torch": "2.14.0+cu130",
+  "device": "cuda",
+  "inputs": {
+    "main-1000.safetensors": "c29ab6c4402fe42bfa76f6251fc7b35aa409a2935aa93b88fdb7b13da902d45a",
+    "readouts.json": "531c73f21f3fe4ade19b25fe8cb91055952c7801931d0bc9876d791346df9f4f",
+    "causal.json": "2e37666defed29ef36e9aae22293605f7b512d33eae844cc6d7df41ce324fe71",
+    "summary.json": "cb898c919b0f75354400b99b76b47e7a776d735ee57cae5e4de89212f7aacb1f"
+  },
+  "artifacts": {
+    "unique_calibration_documents": 1100,
+    "shards": 110,
+    "model_id": "7f1879d62259671fc64e56c56890fd754c954f6a2cd3ff55509fe3734a2c5776",
+    "merged_matrices": {
+      "main-100": {
+        "6": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 5.806314124477254e-08
+        },
+        "10": {
+          "max_absolute_error": 1.5497207650483347e-07,
+          "relative_l2_error": 5.762394042545812e-08
+        },
+        "14": {
+          "max_absolute_error": 1.9073486323684108e-07,
+          "relative_l2_error": 5.704601259032335e-08
+        },
+        "18": {
+          "max_absolute_error": 2.145767212802241e-07,
+          "relative_l2_error": 5.819169506983126e-08
+        },
+        "22": {
+          "max_absolute_error": 2.0265579214751028e-07,
+          "relative_l2_error": 6.620261741736375e-08
+        }
+      },
+      "main-1000": {
+        "6": {
+          "max_absolute_error": 4.649162292924558e-07,
+          "relative_l2_error": 1.550312265377321e-07
+        },
+        "10": {
+          "max_absolute_error": 3.9100646975764874e-07,
+          "relative_l2_error": 1.5498404838663832e-07
+        },
+        "14": {
+          "max_absolute_error": 4.529953003817866e-07,
+          "relative_l2_error": 1.522027851526874e-07
+        },
+        "18": {
+          "max_absolute_error": 4.923343659424262e-07,
+          "relative_l2_error": 1.5321697991381773e-07
+        },
+        "22": {
+          "max_absolute_error": 5.972385408448133e-07,
+          "relative_l2_error": 1.5420772976050948e-07
+        }
+      },
+      "replicate-100": {
+        "6": {
+          "max_absolute_error": 1.3113021846145045e-07,
+          "relative_l2_error": 5.752365318843079e-08
+        },
+        "10": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 5.708062090736776e-08
+        },
+        "14": {
+          "max_absolute_error": 1.5497207650483347e-07,
+          "relative_l2_error": 5.7031349338622324e-08
+        },
+        "18": {
+          "max_absolute_error": 2.0265579214751028e-07,
+          "relative_l2_error": 5.8467460666524057e-08
+        },
+        "22": {
+          "max_absolute_error": 2.145767212802241e-07,
+          "relative_l2_error": 6.491394570184574e-08
+        }
+      }
+    },
+    "causal_records": 2560,
+    "identity_controls": 320,
+    "matched_norm_controls": 1280
+  },
+  "gradients": {
+    "shards": {
+      "0": {
+        "6": {
+          "max_absolute_error": 6.73346221446991e-07,
+          "relative_l2_error": 1.2486809874351365e-06
+        },
+        "10": {
+          "max_absolute_error": 1.5087425708770752e-07,
+          "relative_l2_error": 7.351634809421108e-07
+        },
+        "14": {
+          "max_absolute_error": 2.335873432457447e-07,
+          "relative_l2_error": 5.401274500070987e-07
+        },
+        "18": {
+          "max_absolute_error": 1.257285475730896e-07,
+          "relative_l2_error": 2.965910344929815e-07
+        },
+        "22": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 1.513671890481306e-07
+        }
+      },
+      "55": {
+        "6": {
+          "max_absolute_error": 4.377216100692749e-07,
+          "relative_l2_error": 9.655080970550647e-07
+        },
+        "10": {
+          "max_absolute_error": 1.2852251529693604e-07,
+          "relative_l2_error": 6.369182173505179e-07
+        },
+        "14": {
+          "max_absolute_error": 1.7881393432617188e-07,
+          "relative_l2_error": 4.516712021981233e-07
+        },
+        "18": {
+          "max_absolute_error": 1.0896474123001099e-07,
+          "relative_l2_error": 2.6180226817616856e-07
+        },
+        "22": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 1.350798380948133e-07
+        }
+      },
+      "99": {
+        "6": {
+          "max_absolute_error": 2.859160304069519e-07,
+          "relative_l2_error": 9.261588864481717e-07
+        },
+        "10": {
+          "max_absolute_error": 1.1082738637924194e-07,
+          "relative_l2_error": 6.161845641451652e-07
+        },
+        "14": {
+          "max_absolute_error": 2.2258609533309937e-07,
+          "relative_l2_error": 4.713775134557335e-07
+        },
+        "18": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 2.467574907577316e-07
+        },
+        "22": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 9.416157121743692e-08
+        }
+      },
+      "100": {
+        "6": {
+          "max_absolute_error": 3.855675458908081e-07,
+          "relative_l2_error": 9.864260483033795e-07
+        },
+        "10": {
+          "max_absolute_error": 1.043081283569336e-07,
+          "relative_l2_error": 6.212143845780418e-07
+        },
+        "14": {
+          "max_absolute_error": 1.277076080441475e-07,
+          "relative_l2_error": 4.5966046314334e-07
+        },
+        "18": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 2.517770300786066e-07
+        },
+        "22": {
+          "max_absolute_error": 1.1920928955078125e-07,
+          "relative_l2_error": 1.2294107581484252e-07
+        }
+      }
+    },
+    "output_dimensions": [
+      0,
+      1,
+      7,
+      31,
+      127,
+      255,
+      511,
+      895
+    ],
+    "prompts": 40,
+    "compared_entries": 143360
+  },
+  "readouts": {
+    "items": 12,
+    "concept_rank_comparisons": 400,
+    "nonidentical_ranks": 10,
+    "max_rank_difference": 2,
+    "recall_at_1_5_10_disagreements": 0
+  },
+  "interventions": {
+    "pairs": 16,
+    "conditions_per_layer": 4,
+    "layers": 5,
+    "measurements": 320,
+    "max_log_odds_absolute_error": 2.09808349609375e-05
+  },
+  "passed": true,
+  "statistics": {
+    "unique_evaluation_items": 551,
+    "split_counts": {
+      "development": 112,
+      "test": 439
+    },
+    "recall_and_mrr_recomputed": true,
+    "task_macro_differences_recomputed": true
+  },
+  "audit_script_sha256": "795ca9990f2eae6b83c24c39fd5e225aacd9d67852660b681f89c12d48afc2f2",
+  "test_suites": {
+    "rust-tests": {
+      "passed": 12,
+      "failed": 0
+    },
+    "reference-tests": {
+      "passed": 10,
+      "failed": 0
+    },
+    "hf-tests": {
+      "passed": 3,
+      "failed": 0
+    },
+    "native-tests": {
+      "passed": 2,
+      "failed": 0
+    },
+    "statistics-tests": {
+      "passed": 3,
+      "failed": 0
+    }
+  },
+  "scope": {
+    "gradient_check": "8 output rows across all 5 layers, averaged over all 10 prompts in each of shards 0,55,99,100; not every entry of every fitted matrix",
+    "readout_check": "First 2 items in each of 6 released tasks; 4 methods and 5 layers",
+    "causal_check": "First cyclic argument pair in each of 16 function templates; 5 layers and 4 intervention conditions; all stored no-op and matched-norm controls checked",
+    "cross_runtime_fixtures": [
+      "llama",
+      "qwen2",
+      "qwen3",
+      "gpt2",
+      "gpt_neox",
+      "gemma2",
+      "mixtral",
+      "qwen3_5_text",
+      "custom"
+    ],
+    "limits": "Numerical implementation checks, not universal model compatibility or replication of all paper findings. Tiny architecture fixtures use reference CPU kernels."
+  },
+  "source_commit": "cce2546e58b302ed2bed39517f652ced74a18bc0"
+}
