@@ -1,0 +1,19 @@
+name: Reference experiment build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: experiments/qwen-calibration/native
+      - run: cargo fmt --manifest-path experiments/qwen-calibration/native/Cargo.toml -- --check
+      - run: cargo test --locked --manifest-path experiments/qwen-calibration/native/Cargo.toml --all-targets
+      - run: cargo clippy --locked --manifest-path experiments/qwen-calibration/native/Cargo.toml --all-targets -- -D warnings

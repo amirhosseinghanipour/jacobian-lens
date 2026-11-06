@@ -1,0 +1,30 @@
+[package]
+name = "jlens-qwen-reference"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+authors = ["Amirhossein Ghanipour"]
+description = "Native Qwen reference implementation for the frozen calibration study"
+
+[features]
+default = []
+cuda = ["jacobian-lens/cuda"]
+metal = ["jacobian-lens/metal"]
+
+[[bin]]
+name = "jlens-qwen-experiment"
+path = "../runner.rs"
+
+[dependencies]
+jacobian-lens = { path = "../../..", default-features = false }
+candle-core = "0.11.1"
+candle-nn = "0.11.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+safetensors = "0.8"
+sha2 = "0.10"
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
+
+[dev-dependencies]
+tempfile = "3"

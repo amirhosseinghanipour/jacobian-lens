@@ -1,9 +1,10 @@
 //! Qwen2/Qwen2.5 dense decoder with explicit block boundaries and autograd.
 //! Full-sequence execution avoids stale KV state during causal interventions.
-use crate::{DifferentiableTransformer, LensError, Result, TransformerForward, Unembed};
 use candle_core::{D, DType, Device, Module, Tensor};
 use candle_nn::{Linear, VarBuilder};
+use jacobian_lens::{DifferentiableTransformer, LensError, Result, TransformerForward, Unembed};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -157,7 +158,7 @@ impl Qwen2 {
     pub fn forward_tracked(
         &self,
         ids: &Tensor,
-        mut tracker: Option<&mut crate::LensTracker<'_>>,
+        mut tracker: Option<&mut jacobian_lens::LensTracker<'_>>,
         mut edit: Option<&mut ResidualEdit<'_>>,
     ) -> Result<Tensor> {
         if let Some(t) = tracker.as_deref_mut() {
@@ -320,9 +321,9 @@ impl TransformerForward for Qwen2 {
     }
 }
 
-impl crate::LensModel for Qwen2 {
-    fn dimensions(&self) -> crate::ModelDimensions {
-        crate::ModelDimensions {
+impl jacobian_lens::LensModel for Qwen2 {
+    fn dimensions(&self) -> jacobian_lens::ModelDimensions {
+        jacobian_lens::ModelDimensions {
             hidden_size: self.config.hidden_size,
             layer_count: self.config.num_hidden_layers,
             vocab_size: self.config.vocab_size,
@@ -332,9 +333,9 @@ impl crate::LensModel for Qwen2 {
         &self,
         ids: &Tensor,
         layers: &[usize],
-        replacements: &[crate::ResidualReplacement],
-    ) -> Result<crate::ModelTrace> {
-        crate::model::validate_capture(self.dimensions(), layers, replacements)?;
+        replacements: &[jacobian_lens::ResidualReplacement],
+    ) -> Result<jacobian_lens::ModelTrace> {
+        jacobian_lens::validate_capture(self.dimensions(), layers, replacements)?;
         let mut h = self.embed_tokens(ids)?;
         let mut residuals = std::collections::BTreeMap::new();
         for layer in 0..self.layer_count() {
@@ -354,7 +355,7 @@ impl crate::LensModel for Qwen2 {
                 residuals.insert(layer, h.clone());
             }
         }
-        Ok(crate::ModelTrace {
+        Ok(jacobian_lens::ModelTrace {
             residuals,
             final_residual: h,
         })
@@ -369,4 +370,16 @@ impl crate::LensModel for Qwen2 {
             .lm_head()
             .index_select(&Tensor::new(tokens, self.lm_head().device())?, 0)?)
     }
+}
+
+/// Identity binds the exact Qwen weights, architecture config and tokenizer.
+pub fn checkpoint_identity(directory: impl AsRef<Path>) -> Result<String> {
+    let mut hash = Sha256::new();
+    for name in ["model.safetensors", "config.json", "tokenizer.json"] {
+        hash.update(name.as_bytes());
+        hash.update(
+            jacobian_lens::provenance::sha256_file(directory.as_ref().join(name))?.as_bytes(),
+        );
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }

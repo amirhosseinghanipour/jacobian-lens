@@ -6,16 +6,12 @@ use jacobian_lens::{
 use std::{collections::BTreeMap, path::Path};
 use tokenizers::Tokenizer;
 fn usage() -> LensError {
-    LensError::Invalid("usage: jlens fit MODEL_DIR PROMPTS.json OUTPUT.safetensors SOURCE_LAYERS [DIM_BATCH] [MAX_SEQ_LEN]\n       jlens eval MODEL_DIR LENS.safetensors DATASET.json POSITION OUTPUT.json [K]\nSOURCE_LAYERS: comma-separated block-output indices; POSITION: target|newline|last; PROMPTS.json: array of calibration strings\nJLENS_BACKEND=hf (default, requires --features hf); qwen2 (requires --features native-qwen)".into())
+    LensError::Invalid("usage: jlens fit MODEL_DIR PROMPTS.json OUTPUT.safetensors SOURCE_LAYERS [DIM_BATCH] [MAX_SEQ_LEN]\n       jlens eval MODEL_DIR LENS.safetensors DATASET.json POSITION OUTPUT.json [K]\nSOURCE_LAYERS: comma-separated block-output indices; POSITION: target|newline|last; PROMPTS.json: array of calibration strings\nJLENS_BACKEND=hf (default, requires --features hf)".into())
 }
 fn load_model(backend: &str, directory: &str, device: &Device) -> Result<Box<dyn ResearchModel>> {
     let _ = (directory, device);
     // Dispatch on runtime selection. Architecture discovery belongs to that runtime.
     match backend {
-        #[cfg(feature = "native-qwen")]
-        "qwen2" | "native" => Ok(Box::new(jacobian_lens::qwen2::Qwen2::load(directory, device, DType::F32)?)),
-        #[cfg(not(feature = "native-qwen"))]
-        "qwen2" | "native" => Err(LensError::Invalid("the Qwen-specific backend requires --features native-qwen".into())),
         #[cfg(feature = "hf")]
         "hf" => {
             let mut options = jacobian_lens::hf::HfOptions::local(directory);
@@ -27,7 +23,7 @@ fn load_model(backend: &str, directory: &str, device: &Device) -> Result<Box<dyn
         }
         #[cfg(not(feature = "hf"))]
         "hf" => Err(LensError::Invalid("the default runtime backend requires --features hf; the library itself needs no model backend".into())),
-        _ => Err(LensError::Invalid("JLENS_BACKEND must be hf or qwen2".into())),
+        _ => Err(LensError::Invalid("this CLI supports JLENS_BACKEND=hf; custom runtimes implement the library model interfaces".into())),
     }
 }
 fn main() -> Result<()> {
@@ -48,30 +44,12 @@ fn main() -> Result<()> {
         return Err(usage());
     }
     let backend = std::env::var("JLENS_BACKEND").unwrap_or_else(|_| "hf".into());
-    let device = if backend == "hf" {
-        Device::Cpu
-    } else {
-        match std::env::var("JLENS_DEVICE").as_deref() {
-            Ok("cuda") => Device::new_cuda(0)?,
-            Ok("cpu") | Err(_) => Device::Cpu,
-            Ok(_) => {
-                return Err(LensError::Invalid(
-                    "JLENS_DEVICE must be cpu or cuda".into(),
-                ));
-            }
-        }
-    };
+    // The runtime owns model placement; bridge tensors are returned on CPU.
+    let device = Device::Cpu;
     let model = load_model(&backend, &args[1], &device)?;
     let tokenizer = Tokenizer::from_file(Path::new(&args[1]).join("tokenizer.json"))
         .map_err(|e| LensError::Tokenizer(e.to_string()))?;
-    let identity = || -> Result<String> {
-        // Keep old native checkpoint identities valid for explicit native users.
-        #[cfg(feature = "native-qwen")]
-        if matches!(backend.as_str(), "qwen2" | "native") {
-            return jacobian_lens::provenance::qwen_identity(&args[1]);
-        }
-        jacobian_lens::provenance::model_identity(&args[1])
-    };
+    let identity = || jacobian_lens::provenance::model_identity(&args[1]);
     match args[0].as_str() {
         "fit" => {
             let prompts: Vec<String> = serde_json::from_slice(&std::fs::read(&args[2])?)

@@ -4,8 +4,9 @@ mod causal;
 use candle_core::{DType, Device, Tensor};
 use jacobian_lens::{
     DifferentiableTransformer, FitCheckpoint, FittingConfig, JacobianLensRegistry, LensError,
-    Result, Unembed, evaluation::*, qwen2::Qwen2,
+    Result, Unembed, evaluation::*,
 };
+use jlens_qwen_reference::Qwen2;
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -69,7 +70,7 @@ fn main() -> Result<()> {
         _ => return Err(err("invalid JLENS_DEVICE")),
     };
     let model = Qwen2::load(&a[1], &device, DType::F32)?;
-    let model_id = jacobian_lens::provenance::qwen_identity(&a[1])?;
+    let model_id = jlens_qwen_reference::checkpoint_identity(&a[1])?;
     let tokenizer = Tokenizer::from_file(Path::new(&a[1]).join("tokenizer.json")).map_err(err)?;
     match a[0].as_str() {
         "causal" => {

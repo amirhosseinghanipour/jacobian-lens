@@ -1,5 +1,6 @@
 use candle_core::{Device, Tensor};
-use jacobian_lens::{JacobianLensRegistry, LensError, LensFrame, Result, Unembed, qwen2::Qwen2};
+use jacobian_lens::{JacobianLensRegistry, LensError, LensFrame, Result, Unembed};
+use jlens_qwen_reference::Qwen2;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use tokenizers::Tokenizer;

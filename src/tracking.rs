@@ -52,7 +52,8 @@ impl<'a> LensTracker<'a> {
     pub fn observations(&self) -> &[Observation] {
         &self.observations
     }
-    pub(crate) fn validate_layer_count(&self, count: usize) -> Result<()> {
+    /// Check requested hook indices before an external model adapter executes.
+    pub fn validate_layer_count(&self, count: usize) -> Result<()> {
         if self.layers.iter().any(|&l| l >= count) {
             return Err(LensError::Invalid("tracked layer outside model".into()));
         }

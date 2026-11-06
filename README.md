@@ -214,19 +214,21 @@ PYTHONPATH=scripts JLENS_PYTHON=python3 \
   cargo test --release --features hf --test hf architectures_preserve -- --ignored --nocapture
 ```
 
-## Optional native adapter and fixed-model studies
+## Reference experiment
 
-`native-qwen` enables `qwen2::Qwen2`, the original differentiable Qwen2/Qwen2.5
-adapter. Select it explicitly with `JLENS_BACKEND=qwen2` and
-`--features native-qwen`. It implements the same model interfaces as other
-backends. It uses full-sequence GQA, RoPE, SwiGLU, and RMSNorm; sliding-window
-attention is rejected. The earlier explicit `JLENS_BACKEND=native` spelling is
-accepted as a compatibility alias, never a default.
+The original native Qwen implementation lives in the unpublished
+`jlens-qwen-reference` package under `experiments/qwen-calibration/native/`.
+It depends on the main library through its public model interfaces; the main
+library does not depend on it. The model implementation, runner, and native
+parity tests are excluded from the `jacobian-lens` crate package.
 
-The frozen Qwen study is kept under `experiments/qwen-calibration/`. Its runner
-is `jlens-qwen-experiment`, enabled only by `qwen-experiment`. Model-specific
-checkpoints, layer choices, and reference fixtures describe that experiment;
-they do not configure the general-purpose library or CLI.
+The frozen study and its model-specific choices remain under
+`experiments/qwen-calibration/` for reproducibility. To build its runner from a
+repository checkout:
+
+```sh
+cargo build --release --manifest-path experiments/qwen-calibration/native/Cargo.toml --target-dir target --bin jlens-qwen-experiment
+```
 
 ## Weight format and memory
 
@@ -261,17 +263,17 @@ weighting, checkpoint resume, nonorthogonal coordinate swaps, norm-matched causa
 controls, sparse reconstruction, and full-vocabulary rank tracking. The Candle
 fitter is checked against that independent forward-mode implementation.
 
-The optional native adapter tests compare Qwen residuals, logits, and Jacobian rows against
-PyTorch, verify finite-difference predictions, fit and serialize a complete
+The separate reference package tests compare Qwen residuals, logits, and
+Jacobian rows against PyTorch, verify finite-difference predictions, fit and serialize a complete
 late-layer Jacobian, and perform a held-out concept swap. Run them explicitly:
 
 ```sh
 python3 scripts/download_qwen.py --revision 7ae557604adf67be50417f59c2c2f167def9a775
 pip install torch transformers==4.49.0 safetensors
 python3 scripts/qwen_oracle.py models/Qwen2.5-0.5B-Instruct /tmp/qwen-oracle.safetensors
-JLENS_QWEN_DIR=models/Qwen2.5-0.5B-Instruct \
+JLENS_QWEN_DIR="$(pwd)/models/Qwen2.5-0.5B-Instruct" \
 JLENS_QWEN_ORACLE=/tmp/qwen-oracle.safetensors \
-cargo test --release --features native-qwen --test qwen -- --ignored --nocapture --test-threads=1
+cargo test --release --manifest-path experiments/qwen-calibration/native/Cargo.toml --test qwen -- --ignored --nocapture --test-threads=1
 ```
 
 These tests establish numerical and intervention behavior. Empirical replication
@@ -284,8 +286,8 @@ included under Apache-2.0; see `NOTICE` for attribution and upstream revision.
 Build with a compatible NVIDIA CUDA toolkit and driver:
 
 ```sh
-cargo build --release --features cuda,qwen-experiment --bin jlens-qwen-experiment
-JLENS_DEVICE=cuda cargo test --release --features cuda,native-qwen --test qwen -- --ignored --test-threads=1
+cargo build --release --manifest-path experiments/qwen-calibration/native/Cargo.toml --target-dir target --features cuda --bin jlens-qwen-experiment
+JLENS_DEVICE=cuda cargo test --release --manifest-path experiments/qwen-calibration/native/Cargo.toml --features cuda --test qwen -- --ignored --test-threads=1
 ```
 
 `JLENS_DEVICE=cuda` selects GPU zero explicitly; unavailable CUDA returns an error.

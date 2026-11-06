@@ -1,8 +1,8 @@
 //! Local checkpoint research parity tests. Never silently skip missing fixtures.
 //! Run scripts/qwen_oracle.py first, then explicitly run this ignored test.
-#![cfg(feature = "native-qwen")]
 use candle_core::{DType, Device, Tensor};
-use jacobian_lens::{DifferentiableTransformer, Result, Unembed, jacobian_rows, qwen2::Qwen2};
+use jacobian_lens::{DifferentiableTransformer, Result, Unembed, jacobian_rows};
+use jlens_qwen_reference::Qwen2;
 fn compare(actual: &Tensor, expected: &Tensor, absolute: f32, relative: f32) -> Result<()> {
     assert_eq!(actual.dims(), expected.dims());
     let a = actual.flatten_all()?.to_vec1::<f32>()?;
@@ -146,8 +146,10 @@ fn qwen_full_fit_serialization_and_concept_swap() -> Result<()> {
     let registry = JacobianLensRegistry::load(&path, &device, DType::F32)?;
     let tok =
         Tokenizer::from_file(std::path::Path::new(&directory).join("tokenizer.json")).unwrap();
-    let dataset: EvaluationDataset =
-        serde_json::from_str(include_str!("../data/evaluations/lens-eval-multihop.json")).unwrap();
+    let dataset: EvaluationDataset = serde_json::from_str(include_str!(
+        "../../../../data/evaluations/lens-eval-multihop.json"
+    ))
+    .unwrap();
     let item = dataset
         .items
         .iter()

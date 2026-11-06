@@ -59,7 +59,9 @@ pub trait LensModel: Unembed {
     fn unembedding_rows(&self, token_ids: &[u32]) -> Result<Tensor>;
 }
 
-pub(crate) fn validate_capture(
+/// Validate layer indices and reject duplicate replacements before a backend
+/// executes. Each backend must also check replacement shape, dtype and device.
+pub fn validate_capture(
     dimensions: ModelDimensions,
     layers: &[usize],
     replacements: &[ResidualReplacement],

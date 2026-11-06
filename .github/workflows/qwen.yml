@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      JLENS_QWEN_DIR: models/Qwen2.5-0.5B-Instruct
+      JLENS_QWEN_DIR: ${{ github.workspace }}/models/Qwen2.5-0.5B-Instruct
       JLENS_QWEN_ORACLE: /tmp/qwen-oracle.safetensors
       RAYON_NUM_THREADS: '2'
       JLENS_ARTIFACT_DIR: /tmp/qwen-results
@@ -25,7 +25,7 @@ jobs:
         with:
           name: qwen-pytorch-oracle
           path: /tmp/qwen-oracle.safetensors
-      - run: cargo test --release --features native-qwen --test qwen -- --ignored --nocapture --test-threads=1
+      - run: cargo test --locked --release --manifest-path experiments/qwen-calibration/native/Cargo.toml --test qwen -- --ignored --nocapture --test-threads=1
       - uses: actions/upload-artifact@v4
         with:
           name: qwen-research-results
