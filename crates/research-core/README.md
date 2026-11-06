@@ -1,7 +1,7 @@
 # jlens-research
 
-Deterministic f64 CPU reference algorithms for Jacobian lens research, by
-Amirhossein Ghanipour. This is the reference companion to
+Deterministic f64 CPU reference algorithms for Jacobian lens research.
+This is the reference companion to
 [jacobian-lens](https://github.com/amirhosseinghanipour/jacobian-lens), not a
 pretrained model runtime.
 
