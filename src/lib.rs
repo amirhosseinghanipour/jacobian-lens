@@ -18,6 +18,7 @@ mod intervention;
 pub mod visualization;
 pub use intervention::*;
 pub mod provenance;
+#[cfg(feature = "native-qwen")]
 pub mod qwen2;
 pub use fitting::*;
 pub use jlens_research as research;

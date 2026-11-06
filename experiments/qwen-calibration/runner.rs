@@ -1,4 +1,4 @@
-#[path = "experiment/causal.rs"]
+#[path = "causal.rs"]
 mod causal;
 // Reproducible fitting over frozen token windows and matched lens measurements.
 use candle_core::{DType, Device, Tensor};
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
     let a: Vec<_> = std::env::args().skip(1).collect();
     if a.len() < 4 {
         return Err(err(
-            "usage: jlens-experiment fit MODEL SHARD OUTPUT | eval MODEL LENS_DIRECTORY OUTPUT",
+            "usage: jlens-qwen-experiment fit MODEL SHARD OUTPUT | eval MODEL LENS_DIRECTORY OUTPUT",
         ));
     }
     let device = match std::env::var("JLENS_DEVICE").as_deref() {

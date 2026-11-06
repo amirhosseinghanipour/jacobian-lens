@@ -2,12 +2,33 @@
 use candle_core::{DType, Device, Tensor};
 use jacobian_lens::{
     FittingConfig, JacobianLensRegistry, LensError, ResearchModel, Result, evaluation::*,
-    qwen2::Qwen2,
 };
 use std::{collections::BTreeMap, path::Path};
 use tokenizers::Tokenizer;
 fn usage() -> LensError {
-    LensError::Invalid("usage: jlens fit MODEL_DIR PROMPTS.json OUTPUT.safetensors SOURCE_LAYERS [DIM_BATCH] [MAX_SEQ_LEN]\n       jlens eval MODEL_DIR LENS.safetensors DATASET.json POSITION OUTPUT.json [K]\nSOURCE_LAYERS: comma-separated block-output indices; POSITION: target|newline|last; PROMPTS.json: array of calibration strings".into())
+    LensError::Invalid("usage: jlens fit MODEL_DIR PROMPTS.json OUTPUT.safetensors SOURCE_LAYERS [DIM_BATCH] [MAX_SEQ_LEN]\n       jlens eval MODEL_DIR LENS.safetensors DATASET.json POSITION OUTPUT.json [K]\nSOURCE_LAYERS: comma-separated block-output indices; POSITION: target|newline|last; PROMPTS.json: array of calibration strings\nJLENS_BACKEND=hf (default, requires --features hf); qwen2 (requires --features native-qwen)".into())
+}
+fn load_model(backend: &str, directory: &str, device: &Device) -> Result<Box<dyn ResearchModel>> {
+    let _ = (directory, device);
+    // Dispatch on runtime selection. Architecture discovery belongs to that runtime.
+    match backend {
+        #[cfg(feature = "native-qwen")]
+        "qwen2" | "native" => Ok(Box::new(jacobian_lens::qwen2::Qwen2::load(directory, device, DType::F32)?)),
+        #[cfg(not(feature = "native-qwen"))]
+        "qwen2" | "native" => Err(LensError::Invalid("the Qwen-specific backend requires --features native-qwen".into())),
+        #[cfg(feature = "hf")]
+        "hf" => {
+            let mut options = jacobian_lens::hf::HfOptions::local(directory);
+            options.device = std::env::var("JLENS_DEVICE").unwrap_or_else(|_| "cpu".into());
+            let python = std::env::var("JLENS_PYTHON").unwrap_or_else(|_| "python3".into());
+            let timeout = std::env::var("JLENS_REQUEST_TIMEOUT").unwrap_or_else(|_| "3600".into())
+                .parse::<u64>().map_err(|_| usage())?;
+            Ok(Box::new(jacobian_lens::hf::HfModel::launch(python, &options, device, std::time::Duration::from_secs(timeout))?))
+        }
+        #[cfg(not(feature = "hf"))]
+        "hf" => Err(LensError::Invalid("the default runtime backend requires --features hf; the library itself needs no model backend".into())),
+        _ => Err(LensError::Invalid("JLENS_BACKEND must be hf or qwen2".into())),
+    }
 }
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
@@ -18,10 +39,15 @@ fn main() -> Result<()> {
         println!("{}", usage());
         return Ok(());
     }
-    if args.len() < 5 || (args.first().is_some_and(|s| s == "eval") && args.len() < 6) {
+    if !args
+        .first()
+        .is_some_and(|s| matches!(s.as_str(), "fit" | "eval"))
+        || args.len() < 5
+        || (args.first().is_some_and(|s| s == "eval") && args.len() < 6)
+    {
         return Err(usage());
     }
-    let backend = std::env::var("JLENS_BACKEND").unwrap_or_else(|_| "native".into());
+    let backend = std::env::var("JLENS_BACKEND").unwrap_or_else(|_| "hf".into());
     let device = if backend == "hf" {
         Device::Cpu
     } else {
@@ -35,38 +61,16 @@ fn main() -> Result<()> {
             }
         }
     };
+    let model = load_model(&backend, &args[1], &device)?;
     let tokenizer = Tokenizer::from_file(Path::new(&args[1]).join("tokenizer.json"))
         .map_err(|e| LensError::Tokenizer(e.to_string()))?;
-    let model: Box<dyn ResearchModel> = match backend.as_str() {
-        "native" => Box::new(Qwen2::load(&args[1], &device, DType::F32)?),
-        #[cfg(feature = "hf")]
-        "hf" => {
-            let mut options = jacobian_lens::hf::HfOptions::local(&args[1]);
-            options.device = std::env::var("JLENS_DEVICE").unwrap_or_else(|_| "cpu".into());
-            let python = std::env::var("JLENS_PYTHON").unwrap_or_else(|_| "python3".into());
-            let timeout = std::env::var("JLENS_REQUEST_TIMEOUT")
-                .unwrap_or_else(|_| "3600".into())
-                .parse::<u64>()
-                .map_err(|_| usage())?;
-            Box::new(jacobian_lens::hf::HfModel::launch(
-                python,
-                &options,
-                &device,
-                std::time::Duration::from_secs(timeout),
-            )?)
-        }
-        _ => {
-            return Err(LensError::Invalid(
-                "JLENS_BACKEND must be native, or hf with --features hf".into(),
-            ));
-        }
-    };
     let identity = || -> Result<String> {
-        if backend == "native" {
-            jacobian_lens::provenance::qwen_identity(&args[1])
-        } else {
-            jacobian_lens::provenance::model_identity(&args[1])
+        // Keep old native checkpoint identities valid for explicit native users.
+        #[cfg(feature = "native-qwen")]
+        if matches!(backend.as_str(), "qwen2" | "native") {
+            return jacobian_lens::provenance::qwen_identity(&args[1]);
         }
+        jacobian_lens::provenance::model_identity(&args[1])
     };
     match args[0].as_str() {
         "fit" => {

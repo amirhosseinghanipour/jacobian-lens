@@ -1,4 +1,4 @@
-name: Calibration experiment
+name: Qwen calibration experiment
 on:
   workflow_dispatch:
 jobs:

@@ -87,6 +87,7 @@ pub fn intervention_logits(
     input_ids: &Tensor,
     replacements: &[ResidualReplacement],
 ) -> Result<Tensor> {
+    validate_capture(model.dimensions(), &[], replacements)?;
     let trace = model.capture(input_ids, &[], replacements)?;
     model.logits(&trace.final_residual)
 }

@@ -278,3 +278,122 @@ fn pretrained_qwen_readout_matches_independent_oracle() -> Result<()> {
     close(&model.logits(&last)?, &fixture["logits"], 1e-3, 2e-3)?;
     Ok(())
 }
+
+#[test]
+#[ignore = "requires generated architecture fixtures and the Python runtime"]
+fn default_cli_fits_non_qwen_models_and_rejects_cross_model_lenses() -> Result<()> {
+    use jacobian_lens::JacobianLensRegistry;
+    use std::process::Command;
+    let root = std::env::var("JLENS_HF_TEST_DIR").expect("set JLENS_HF_TEST_DIR");
+    let python = std::env::var("JLENS_PYTHON").expect("set JLENS_PYTHON");
+    let scratch = tempfile::tempdir()?;
+    let prompts = scratch.path().join("prompts.json");
+    let dataset = scratch.path().join("evaluation.json");
+    let text = (1..25)
+        .map(|i| format!("t{i}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    std::fs::write(&prompts, serde_json::to_vec(&vec![text]).unwrap())?;
+    std::fs::write(
+        &dataset,
+        serde_json::to_vec(&serde_json::json!({"items":[{
+            "name":"concept-readout", "prompt":"t1 t3 t5 t7 t9 t11", "intermediates":["t7","t8"]
+        }]}))
+        .unwrap(),
+    )?;
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_jlens"))
+            .args(args)
+            .env_remove("JLENS_BACKEND")
+            .env_remove("JLENS_DEVICE")
+            .env("JLENS_PYTHON", &python)
+            .output()
+            .expect("run CLI")
+    };
+    let mut previous = None;
+    for family in ["llama", "gpt2"] {
+        let directory = Path::new(&root).join(family);
+        let lens_path = scratch.path().join(format!("{family}.safetensors"));
+        let evaluation = scratch.path().join(format!("{family}.json"));
+        let out = run(&[
+            "fit",
+            directory.to_str().unwrap(),
+            prompts.to_str().unwrap(),
+            lens_path.to_str().unwrap(),
+            "0,1",
+            "3",
+            "24",
+        ]);
+        assert!(
+            out.status.success(),
+            "CLI {family}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        // A three-layer non-Qwen model must be fitted to its own final block,
+        // with the caller's selected source layers and exact token IDs.
+        let model = HfModel::launch(
+            &python,
+            &HfOptions::local(directory.to_str().unwrap()),
+            &Device::Cpu,
+            Duration::from_secs(120),
+        )?;
+        let ids = Tensor::new((1u32..25).collect::<Vec<_>>(), &Device::Cpu)?.unsqueeze(0)?;
+        let expected = estimate_prompt(
+            &model,
+            &ids,
+            &FittingConfig {
+                source_layers: vec![0, 1],
+                target_layer: 2,
+                skip_first: 16,
+                max_seq_len: 24,
+                dim_batch: 1,
+            },
+        )?;
+        let lens = JacobianLensRegistry::load(&lens_path, &Device::Cpu, DType::F32)?;
+        assert_eq!(lens.layers().collect::<Vec<_>>(), vec![0, 1]);
+        for layer in [0, 1] {
+            close(
+                &lens.jacobian(layer)?,
+                &expected.jacobians[&layer],
+                2e-4,
+                2e-4,
+            )?;
+        }
+        let out = run(&[
+            "eval",
+            directory.to_str().unwrap(),
+            lens_path.to_str().unwrap(),
+            dataset.to_str().unwrap(),
+            "last",
+            evaluation.to_str().unwrap(),
+            "10",
+        ]);
+        assert!(
+            out.status.success(),
+            "CLI eval: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let result: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(evaluation)?).unwrap();
+        assert_eq!(result["items"][0]["readout_position"], 5);
+        assert_eq!(result["metric"]["concept_coverage"], 1.0);
+        if let Some(ref previous) = previous {
+            let previous: &std::path::PathBuf = previous;
+            let out = run(&[
+                "eval",
+                directory.to_str().unwrap(),
+                previous.to_str().unwrap(),
+                dataset.to_str().unwrap(),
+                "last",
+                scratch.path().join("wrong-model.json").to_str().unwrap(),
+                "10",
+            ]);
+            assert!(!out.status.success());
+            assert!(
+                String::from_utf8_lossy(&out.stderr).contains("lens provenance does not match")
+            );
+        }
+        previous = Some(lens_path);
+    }
+    Ok(())
+}

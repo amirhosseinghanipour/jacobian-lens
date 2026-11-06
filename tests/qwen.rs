@@ -1,5 +1,6 @@
 //! Local checkpoint research parity tests. Never silently skip missing fixtures.
 //! Run scripts/qwen_oracle.py first, then explicitly run this ignored test.
+#![cfg(feature = "native-qwen")]
 use candle_core::{DType, Device, Tensor};
 use jacobian_lens::{DifferentiableTransformer, Result, Unembed, jacobian_rows, qwen2::Qwen2};
 fn compare(actual: &Tensor, expected: &Tensor, absolute: f32, relative: f32) -> Result<()> {

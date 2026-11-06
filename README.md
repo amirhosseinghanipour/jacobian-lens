@@ -2,9 +2,10 @@
 
 Rust implementations of Jacobian lens fitting, vocabulary decoding, and J-space
 interventions with runtime-independent model interfaces and Candle tensor storage.
-Includes an optional Hugging Face runtime bridge, a native differentiable
-Qwen2/Qwen2.5 backend, an independent f64 CPU reference, and the public Anthropic
-evaluation prompts.
+The default library includes no model architecture. Backends implement shared
+research interfaces; the optional Hugging Face bridge delegates model execution
+to an existing runtime. Includes an independent f64 CPU reference and the public
+Anthropic evaluation prompts.
 
 Based on [Verbalizable Representations Form a Global Workspace in Language Models](https://transformer-circuits.pub/2026/workspace/index.html)
 and the [Python reference](https://github.com/anthropics/jacobian-lens).
@@ -19,7 +20,7 @@ logits = model.lm_head(model.final_norm(transported))
 ```
 
 Layer indices refer to residual block outputs, before final normalization. The
-normalization must match the model: Qwen uses RMSNorm, not LayerNorm. Lens scores
+normalization must match the model, including its LayerNorm or RMSNorm parameters. Lens scores
 measure verbalization dispositions; their softmax is not a calibrated next-token
 prediction or evidence that a model is aligned.
 
@@ -54,22 +55,21 @@ cargo test --manifest-path crates/research-core/Cargo.toml
 cargo run --example causal
 ```
 
-Download the small Qwen checkpoint (approximately 1 GB):
+Use the runtime backend with a local model/tokenizer directory and a JSON array
+of calibration strings. Choose source block indices for that model; the target
+is its final block. Python dependencies are listed in `scripts/requirements-hf.txt`.
 
 ```sh
-python3 scripts/download_qwen.py --revision 7ae557604adf67be50417f59c2c2f167def9a775
+pip install -r scripts/requirements-hf.txt
+cargo run --release --features hf --bin jlens -- fit \
+  MODEL_DIR calibration.json lens.safetensors SOURCE_LAYERS 4 128
+cargo run --release --features hf --bin jlens -- eval \
+  MODEL_DIR lens.safetensors data/evaluations/lens-eval-multihop.json target results.json 10
 ```
 
-Fit selected block-output layers using a JSON array of calibration strings, then
-evaluate a released prompt distribution:
-
-```sh
-cargo run --release --bin jlens -- fit \
-  models/Qwen2.5-0.5B-Instruct calibration.json lens.safetensors 10,14,18,22 8 128
-cargo run --release --bin jlens -- eval \
-  models/Qwen2.5-0.5B-Instruct lens.safetensors \
-  data/evaluations/lens-eval-multihop.json target results.json 10
-```
+`SOURCE_LAYERS` is a comma-separated list of block-output indices. No architecture
+or layer count is assumed. The CLI defaults to `hf`; a build without that feature
+reports the required feature instead of falling back to a specific model.
 
 Fitting automatically resumes from the adjacent `.fit.safetensors` checkpoint.
 Content hashes bind checkpoints to the model, tokenizer, and ordered corpus.
@@ -99,30 +99,26 @@ The library accepts explicit synonym maps for arithmetic and operation names.
 - `forward_tracked`, `intervention_logits`: whole-model tracking and causal reruns.
 - `DifferentiableTransformer`, `jacobian_for_prompt`, `jacobian_rows`, `fit`:
   deterministic full-sequence Jacobian estimation with frozen model weights.
-- `qwen2::Qwen2`: dense Qwen2/Qwen2.5 loading, residual capture, differentiable
-  block execution, final readout, and suffix execution after interventions.
 - `LensFrame`: device-side coordinate permutations and ablations.
 - `visualization::compute_slice`, `build_page`: token rank tracking and standalone
   interactive HTML, with the actual model output as the final row.
 - `research`: f64 reference fitting, atomic resumable checkpoints, sparse
   nonnegative gradient pursuit, layer/position slices, ranks, and paired metrics.
 
-The Qwen adapter uses full-sequence causal attention, grouped query attention,
-RoPE, SwiGLU, tied embeddings where configured, and differentiable normalization.
-Sliding-window attention is rejected. It accepts unpadded batches; it does not
-maintain an incremental KV cache.
+```rust
+use candle_core::Tensor;
+use jacobian_lens::{AppliedLens, ApplyOptions, JacobianLensRegistry, LensModel, Result};
 
-```rust,no_run
-use candle_core::{DType, Device};
-use jacobian_lens::{JacobianLensRegistry, qwen2::Qwen2};
-
-let device = Device::Cpu;
-let model = Qwen2::load("models/Qwen2.5-0.5B-Instruct", &device, DType::F32)?;
-let lens = JacobianLensRegistry::load("lens.safetensors", &device, DType::F32)?;
-// Obtain ids using the checkpoint's tokenizer.json.
-// let states = model.residuals(&ids)?;
-// let logits = lens.decode_jspace(14, &states[14], &model)?;
-# Ok::<(), jacobian_lens::LensError>(())
+fn read_representations(
+    model: &dyn LensModel,
+    lens: &JacobianLensRegistry,
+    ids: &Tensor,
+) -> Result<AppliedLens> {
+    lens.apply(model, ids, &ApplyOptions {
+        positions: Some(vec![-1]),
+        ..Default::default()
+    })
+}
 ```
 
 Share registries/readouts with `Arc`; use request-local trackers. Run synchronous
@@ -160,7 +156,7 @@ ordinary Candle tensors at the boundary.
 pip install -r scripts/requirements-hf.txt
 JLENS_BACKEND=hf JLENS_DEVICE=cuda JLENS_PYTHON=python3 \
   cargo run --release --features hf --bin jlens -- fit \
-  models/MODEL calibration.json lens.safetensors 6,10,14 4 128
+  MODEL_DIR calibration.json lens.safetensors SOURCE_LAYERS 4 128
 ```
 
 Use the same `JLENS_BACKEND=hf` setting with the `eval` command. The CLI takes
@@ -168,7 +164,7 @@ local model/tokenizer directories; the library also accepts Hub identifiers and
 revisions. `JLENS_REQUEST_TIMEOUT` sets the per-request timeout in seconds
 (default 3600). The Python worker can use CUDA without compiling Candle's `cuda`
 feature; Rust-side bridge tensors default to CPU. `HfModel::launch` also accepts
-an explicit Rust output device. The native Qwen CLI remains the default.
+an explicit Rust output device. No model implementation is selected implicitly.
 
 ```rust,ignore
 use std::time::Duration;
@@ -218,6 +214,20 @@ PYTHONPATH=scripts JLENS_PYTHON=python3 \
   cargo test --release --features hf --test hf architectures_preserve -- --ignored --nocapture
 ```
 
+## Optional native adapter and fixed-model studies
+
+`native-qwen` enables `qwen2::Qwen2`, the original differentiable Qwen2/Qwen2.5
+adapter. Select it explicitly with `JLENS_BACKEND=qwen2` and
+`--features native-qwen`. It implements the same model interfaces as other
+backends. It uses full-sequence GQA, RoPE, SwiGLU, and RMSNorm; sliding-window
+attention is rejected. The earlier explicit `JLENS_BACKEND=native` spelling is
+accepted as a compatibility alias, never a default.
+
+The frozen Qwen study is kept under `experiments/qwen-calibration/`. Its runner
+is `jlens-qwen-experiment`, enabled only by `qwen-experiment`. Model-specific
+checkpoints, layer choices, and reference fixtures describe that experiment;
+they do not configure the general-purpose library or CLI.
+
 ## Weight format and memory
 
 Weights use safetensors names `jacobians.<layer>`, each a square `[output, input]`
@@ -251,16 +261,17 @@ weighting, checkpoint resume, nonorthogonal coordinate swaps, norm-matched causa
 controls, sparse reconstruction, and full-vocabulary rank tracking. The Candle
 fitter is checked against that independent forward-mode implementation.
 
-Real-checkpoint tests compare Qwen residuals, logits, and Jacobian rows against
+The optional native adapter tests compare Qwen residuals, logits, and Jacobian rows against
 PyTorch, verify finite-difference predictions, fit and serialize a complete
 late-layer Jacobian, and perform a held-out concept swap. Run them explicitly:
 
 ```sh
+python3 scripts/download_qwen.py --revision 7ae557604adf67be50417f59c2c2f167def9a775
 pip install torch transformers==4.49.0 safetensors
 python3 scripts/qwen_oracle.py models/Qwen2.5-0.5B-Instruct /tmp/qwen-oracle.safetensors
 JLENS_QWEN_DIR=models/Qwen2.5-0.5B-Instruct \
 JLENS_QWEN_ORACLE=/tmp/qwen-oracle.safetensors \
-cargo test --release --test qwen -- --ignored --nocapture --test-threads=1
+cargo test --release --features native-qwen --test qwen -- --ignored --nocapture --test-threads=1
 ```
 
 These tests establish numerical and intervention behavior. Empirical replication
@@ -268,17 +279,17 @@ of workspace or alignment findings requires the corresponding models, calibratio
 corpora, experimental controls, and held-out outcomes. Public prompt data is
 included under Apache-2.0; see `NOTICE` for attribution and upstream revision.
 
-## CUDA calibration experiment
+## Frozen Qwen CUDA calibration experiment
 
 Build with a compatible NVIDIA CUDA toolkit and driver:
 
 ```sh
-cargo build --release --features cuda --bins
-JLENS_DEVICE=cuda cargo test --release --features cuda --test qwen -- --ignored --test-threads=1
+cargo build --release --features cuda,qwen-experiment --bin jlens-qwen-experiment
+JLENS_DEVICE=cuda cargo test --release --features cuda,native-qwen --test qwen -- --ignored --test-threads=1
 ```
 
 `JLENS_DEVICE=cuda` selects GPU zero explicitly; unavailable CUDA returns an error.
-`JLENS_DIM_BATCH` controls the independent cotangent batch for `jlens-experiment`.
+`JLENS_DIM_BATCH` controls the independent cotangent batch for `jlens-qwen-experiment`.
 The frozen design is in `experiments/qwen-calibration/protocol.json`.
 Prepare independent 128-token FineWeb windows, then fit and evaluate:
 

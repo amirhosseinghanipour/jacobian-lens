@@ -16,6 +16,7 @@ pub fn sha256_file(path: impl AsRef<Path>) -> Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 /// Identity binds the exact Qwen weights, architecture config and tokenizer.
+#[cfg(feature = "native-qwen")]
 pub fn qwen_identity(directory: impl AsRef<Path>) -> Result<String> {
     let mut hash = Sha256::new();
     for name in ["model.safetensors", "config.json", "tokenizer.json"] {

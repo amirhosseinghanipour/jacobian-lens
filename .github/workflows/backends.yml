@@ -20,7 +20,7 @@ jobs:
       - run: pip install -r scripts/requirements-hf.txt
       - run: python scripts/backend_oracles.py artifacts/backend-tests/models
       - run: cargo test --locked --features hf --all-targets
-      - run: cargo test --locked --features hf --test hf architectures_preserve -- --ignored --nocapture
+      - run: cargo test --locked --features hf --test hf -- --ignored --nocapture --skip pretrained_qwen --test-threads=1
         env:
           JLENS_PYTHON: python
           JLENS_HF_TEST_DIR: artifacts/backend-tests/models

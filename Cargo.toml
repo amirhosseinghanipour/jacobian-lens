@@ -2,10 +2,11 @@
 name = "jacobian-lens"
 version = "0.1.0"
 edition = "2024"
+autobins = false
 license = "Apache-2.0"
 authors = ["Amirhossein Ghanipour"]
 repository = "https://github.com/amirhosseinghanipour/jacobian-lens"
-include = ["/src/**", "/examples/**", "/tests/**", "/data/**", "/scripts/*.py", "/scripts/*.txt", "/README.md", "/LICENSE", "/NOTICE", "/Cargo.toml"]
+include = ["/src/**", "/examples/**", "/tests/**", "/data/**", "/scripts/*.py", "/scripts/*.txt", "/experiments/qwen-calibration/*.rs", "/README.md", "/LICENSE", "/NOTICE", "/Cargo.toml"]
 description = "Model-independent Jacobian lens fitting, decoding, and J-space interpretability"
 readme = "README.md"
 documentation = "https://docs.rs/jacobian-lens"
@@ -19,8 +20,21 @@ features = ["hf"]
 default = []
 # Optional persistent Python/Transformers runtime; the native crate needs no Python.
 hf = []
+# Optional architecture adapter; the default library has no model implementation.
+native-qwen = []
+# Frozen, model-specific study runner; not part of the general CLI.
+qwen-experiment = ["native-qwen"]
 cuda = ["candle-core/cuda", "candle-nn/cuda"]
 metal = ["candle-core/metal", "candle-nn/metal"]
+
+[[bin]]
+name = "jlens"
+path = "src/bin/jlens.rs"
+
+[[bin]]
+name = "jlens-qwen-experiment"
+path = "experiments/qwen-calibration/runner.rs"
+required-features = ["qwen-experiment"]
 
 [dependencies]
 candle-core = "0.11.1"

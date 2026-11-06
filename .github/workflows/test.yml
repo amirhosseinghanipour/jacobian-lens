@@ -17,6 +17,8 @@ jobs:
       - run: cargo test --locked --manifest-path crates/research-core/Cargo.toml
       - run: cargo test --locked --all-targets
       - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --features qwen-experiment --all-targets
+      - run: cargo clippy --locked --features qwen-experiment --all-targets -- -D warnings
       - run: cargo doc --locked --no-deps
         env:
           RUSTDOCFLAGS: '-D warnings'

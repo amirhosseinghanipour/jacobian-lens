@@ -25,7 +25,7 @@ jobs:
         with:
           name: qwen-pytorch-oracle
           path: /tmp/qwen-oracle.safetensors
-      - run: cargo test --release --test qwen -- --ignored --nocapture --test-threads=1
+      - run: cargo test --release --features native-qwen --test qwen -- --ignored --nocapture --test-threads=1
       - uses: actions/upload-artifact@v4
         with:
           name: qwen-research-results

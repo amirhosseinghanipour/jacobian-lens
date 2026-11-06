@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run resumable Rust calibration shards, merge lenses and measure held-out tasks."""
+"""Run the frozen Qwen calibration study, merge lenses and measure held-out tasks."""
 import argparse
 import hashlib
 import json
@@ -11,7 +11,7 @@ import subprocess
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('model',type=Path);p.add_argument('corpus',type=Path);p.add_argument('output',type=Path)
-    p.add_argument('--binary',type=Path,default=Path('target/release/jlens-experiment'))
+    p.add_argument('--binary',type=Path,default=Path('target/release/jlens-qwen-experiment'))
     a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
     manifest=json.loads((a.corpus/'manifest.json').read_text())
     for filename,expected in manifest['files'].items():
