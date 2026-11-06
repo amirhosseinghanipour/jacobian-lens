@@ -47,6 +47,11 @@ cargo add jacobian-lens
 The library import is `jacobian_lens`; the CLI executable is `jlens`.
 `jlens-research` is installed automatically as the CPU reference dependency.
 
+Version 0.2 removes the bundled `qwen2` API, native CLI backend, and experiment
+runner from this crate. Applications can enable `hf` or implement the public
+model interfaces. The original native implementation and runner remain in the
+unpublished reference package described below.
+
 From a repository checkout, run the research tests and example:
 
 ```sh

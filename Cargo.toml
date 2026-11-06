@@ -1,6 +1,6 @@
 [package]
 name = "jacobian-lens"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 autobins = false
 license = "Apache-2.0"
@@ -38,7 +38,7 @@ tokenizers = { version = "0.22", default-features = false, features = ["fancy-re
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-jlens-research = { path = "crates/research-core", version = "0.1.0" }
+jlens-research = { path = "crates/research-core", version = "0.1.1" }
 
 tempfile = "3"
 
