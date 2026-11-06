@@ -5,8 +5,15 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Amirhossein Ghanipour"]
 repository = "https://github.com/amirhosseinghanipour/jacobian-lens"
-include = ["src/**", "examples/**", "tests/**", "data/**", "README.md", "LICENSE", "NOTICE", "Cargo.toml"]
-description = "Candle Jacobian lens decoding and explicit residual-stream tracking"
+include = ["/src/**", "/examples/**", "/tests/**", "/data/**", "/scripts/*.py", "/scripts/*.txt", "/README.md", "/LICENSE", "/NOTICE", "/Cargo.toml"]
+description = "Model-independent Jacobian lens fitting, decoding, and J-space interpretability"
+readme = "README.md"
+documentation = "https://docs.rs/jacobian-lens"
+keywords = ["interpretability", "machine-learning", "transformers", "jacobian", "ai-safety"]
+categories = ["science", "mathematics"]
+
+[package.metadata.docs.rs]
+features = ["hf"]
 
 [features]
 default = []

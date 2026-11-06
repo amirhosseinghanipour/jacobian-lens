@@ -37,6 +37,17 @@ or ill-conditioned frames are rejected.
 
 ## Use
 
+Add the library to a Rust project:
+
+```sh
+cargo add jacobian-lens
+```
+
+The library import is `jacobian_lens`; the CLI executable is `jlens`.
+`jlens-research` is installed automatically as the CPU reference dependency.
+
+From a repository checkout, run the research tests and example:
+
 ```sh
 cargo test --all-targets
 cargo test --manifest-path crates/research-core/Cargo.toml

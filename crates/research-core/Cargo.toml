@@ -6,6 +6,11 @@ license = "Apache-2.0"
 authors = ["Amirhossein Ghanipour"]
 repository = "https://github.com/amirhosseinghanipour/jacobian-lens"
 description = "Auditable CPU reference algorithms for Jacobian lens research"
+readme = "README.md"
+documentation = "https://docs.rs/jlens-research"
+keywords = ["interpretability", "jacobian", "machine-learning"]
+categories = ["science", "mathematics"]
+include = ["/src/**", "/tests/**", "/Cargo.toml", "/README.md", "/LICENSE"]
 
 [dependencies]
 nalgebra = { version = "=0.33.3", features = ["serde-serialize"] }
